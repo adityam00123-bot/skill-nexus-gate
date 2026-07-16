@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Search, Menu, X, Heart, ShoppingCart, Bell, Sun, Moon, LogIn, UserPlus, LogOut, Check, Trash2, BookOpen, DollarSign, Tag, RefreshCw } from "lucide-react";
+import { Search, Menu, X, Heart, ShoppingCart, Bell, Sun, Moon, LogIn, UserPlus, LogOut, Check, Trash2, BookOpen, DollarSign, Tag, RefreshCw, Shield } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCartContext } from "@/contexts/CartContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useAdmin } from "@/hooks/useAdmin";
 
 const profileMenuItems = [
   { label: "Course List", to: "/courses" },
@@ -78,6 +79,7 @@ const Navbar = () => {
   const { user, profile, signOut } = useAuth();
   const { cartCount } = useCartContext();
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearNotification, clearAll } = useNotifications();
+  const { isAdmin } = useAdmin();
   const isLoggedIn = !!user;
 
   const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "";
@@ -355,17 +357,28 @@ const Navbar = () => {
                         if ('divider' in item) return <div key={i} className="my-1 border-t border-border" />;
                         if ('section' in item) return <div key={i} className="px-4 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{item.section}</div>;
                         return (
-                          <Link
-                            key={i}
-                            to={item.to!}
-                            onClick={() => setProfileOpen(false)}
-                            className="block px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
-                          >
-                            <span>{item.label}</span>
-                            {'badge' in item && item.badge && (
-                              <span className="ml-2 text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">{item.badge as string}</span>
+                          <React.Fragment key={i}>
+                            <Link
+                              to={item.to!}
+                              onClick={() => setProfileOpen(false)}
+                              className="block px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
+                            >
+                              <span>{item.label}</span>
+                              {'badge' in item && item.badge && (
+                                <span className="ml-2 text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">{item.badge as string}</span>
+                              )}
+                            </Link>
+                            {item.label === "Course List" && isAdmin && (
+                              <Link
+                                to="/admin"
+                                onClick={() => setProfileOpen(false)}
+                                className="block px-4 py-2 text-sm transition-colors text-foreground hover:bg-muted"
+                              >
+                                <Shield className="h-3.5 w-3.5 inline mr-2 text-primary" />
+                                <span>Admin Dashboard</span>
+                              </Link>
                             )}
-                          </Link>
+                          </React.Fragment>
                         );
                       })}
                     </div>
