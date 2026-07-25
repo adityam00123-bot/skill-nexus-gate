@@ -16,9 +16,7 @@ import { useCvCoins } from "@/hooks/useCvCoins";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-type PaymentMethod = "upi" | "card" | "netbanking" | "wallet";
-
-const BANKS = ["State Bank of India", "HDFC Bank", "ICICI Bank", "Axis Bank", "Kotak Mahindra Bank", "Bank of Baroda", "Punjab National Bank"];
+type PaymentMethod = "wallet";
 
 // Helper to check if a string is a UUID
 const isUUID = (str: string) => {
@@ -37,13 +35,7 @@ const Checkout = () => {
 
   const [checkoutCourses, setCheckoutCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("upi");
-  const [upiId, setUpiId] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [selectedBank, setSelectedBank] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("wallet");
   const [coupon, setCoupon] = useState("");
   const [couponApplied, setCouponApplied] = useState(false);
   const [couponError, setCouponError] = useState(false);
@@ -167,19 +159,6 @@ const Checkout = () => {
 
   const handlePayment = async () => {
     if (paymentMethod === "upi" && !upiId.includes("@")) {
-      toast.error("Please enter a valid UPI ID");
-      return;
-    }
-    if (paymentMethod === "card") {
-      if (!cardNumber || !cardExpiry || !cardCvv || !cardName) {
-        toast.error("Please fill all card details");
-        return;
-      }
-    }
-    if (paymentMethod === "netbanking" && !selectedBank) {
-      toast.error("Please select a bank");
-      return;
-    }
     if (paymentMethod === "wallet" && (profile?.wallet_balance || 0) < total) {
       toast.error("Insufficient wallet balance. Please add funds.");
       return;
@@ -352,117 +331,25 @@ const Checkout = () => {
 
             {/* Payment Method */}
             <div className="bg-card border border-border rounded-xl p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="font-display font-bold text-lg text-foreground">Payment method</h2>
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Lock className="h-3 w-3" /> Secure and encrypted 🔒
-                </span>
+              <h2 className="font-display font-bold text-lg text-foreground mb-4 flex items-center">
+                <Wallet className="w-5 h-5 mr-2 text-primary" />
+                Payment Method: CourseVerse Wallet
+              </h2>
+
+              <div className="p-4 bg-muted/50 rounded-lg border border-border flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Current Balance</p>
+                  <p className="font-display font-bold text-xl">₹{(profile?.wallet_balance || 0).toLocaleString()}</p>
+                </div>
               </div>
 
-              <div className="space-y-3">
-                {/* UPI */}
-                <PaymentOption
-                  selected={paymentMethod === "upi"}
-                  onClick={() => setPaymentMethod("upi")}
-                  label="UPI"
-                  description="Google Pay, PhonePe, Paytm UPI"
-                  icon={<Smartphone className="h-5 w-5" />}
-                >
-                  <div className="flex gap-2 mt-3">
-                    <Input
-                      placeholder="Enter your UPI ID"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value)}
-                      className="bg-background"
-                    />
-                    <Button variant="outline" size="sm" className="shrink-0">
-                      Verify
-                    </Button>
-                  </div>
-                </PaymentOption>
-
-                {/* Cards */}
-                <PaymentOption
-                  selected={paymentMethod === "card"}
-                  onClick={() => setPaymentMethod("card")}
-                  label="Cards"
-                  description="Visa, Mastercard, RuPay"
-                  icon={<CreditCard className="h-5 w-5" />}
-                >
-                  <div className="space-y-3 mt-3">
-                    <Input
-                      placeholder="Card number"
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value)}
-                      className="bg-background"
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <Input
-                        placeholder="MM/YY"
-                        value={cardExpiry}
-                        onChange={(e) => setCardExpiry(e.target.value)}
-                        className="bg-background"
-                      />
-                      <Input
-                        placeholder="CVV"
-                        value={cardCvv}
-                        onChange={(e) => setCardCvv(e.target.value)}
-                        className="bg-background"
-                        type="password"
-                      />
-                    </div>
-                    <Input
-                      placeholder="Name on card"
-                      value={cardName}
-                      onChange={(e) => setCardName(e.target.value)}
-                      className="bg-background"
-                    />
-                  </div>
-                </PaymentOption>
-
-                {/* Net Banking */}
-                <PaymentOption
-                  selected={paymentMethod === "netbanking"}
-                  onClick={() => setPaymentMethod("netbanking")}
-                  label="Net Banking"
-                  description="All major banks supported"
-                  icon={<Building className="h-5 w-5" />}
-                >
-                  <div className="mt-3 relative">
-                    <select
-                      value={selectedBank}
-                      onChange={(e) => setSelectedBank(e.target.value)}
-                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground appearance-none cursor-pointer"
-                    >
-                      <option value="">Select your bank</option>
-                      {BANKS.map(bank => (
-                        <option key={bank} value={bank}>{bank}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-                </PaymentOption>
-
-                {/* CourseVerse Wallet */}
-                <PaymentOption
-                  selected={paymentMethod === "wallet"}
-                  onClick={() => setPaymentMethod("wallet")}
-                  label="CourseVerse Wallet"
-                  description={`Balance: ₹${(profile?.wallet_balance || 0).toLocaleString()}`}
-                  icon={<Wallet className="h-5 w-5" />}
-                >
-                  <div className="mt-3">
-                    {(profile?.wallet_balance || 0) < total ? (
-                       <div className="space-y-2">
-                         <p className="text-sm text-destructive">Insufficient balance. Please add funds to your wallet.</p>
-                         <Link to="/wallet" target="_blank"><Button size="sm" variant="outline" className="w-full">Add Funds</Button></Link>
-                       </div>
-                    ) : (
-                       <p className="text-sm text-green-500 font-medium">Sufficient balance available. Amount will be deducted securely.</p>
-                    )}
-                  </div>
-                </PaymentOption>
-              </div>
+              {(profile?.wallet_balance || 0) < total ? (
+                 <div className="space-y-2">
+                   <p className="text-sm text-destructive font-medium">Insufficient balance to complete this purchase.</p>
+                 </div>
+              ) : (
+                 <p className="text-sm text-green-500 font-medium">Sufficient balance available. Amount will be deducted securely.</p>
+              )}
             </div>
 
             {/* Order Details */}
@@ -562,15 +449,27 @@ const Checkout = () => {
                   <span className="underline cursor-pointer">Terms of Use</span>
                 </p>
 
-                <Button
-                  size="lg"
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-base"
-                  onClick={handlePayment}
-                  disabled={processing || checkoutCourses.every(c => isPurchased(c.id))}
-                >
-                  <Lock className="mr-2 h-4 w-4" />
-                  {processing ? "Processing…" : "Proceed"}
-                </Button>
+                {(profile?.wallet_balance || 0) < total ? (
+                  <Link to={`/wallet?amount=${total - (profile?.wallet_balance || 0)}`} className="block w-full">
+                    <Button
+                      size="lg"
+                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-base"
+                    >
+                      <Wallet className="mr-2 h-4 w-4" />
+                      Add Funds (₹{total - (profile?.wallet_balance || 0)})
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button
+                    size="lg"
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-base"
+                    onClick={handlePayment}
+                    disabled={processing || checkoutCourses.every(c => isPurchased(c.id))}
+                  >
+                    <Lock className="mr-2 h-4 w-4" />
+                    {processing ? "Processing…" : "Complete Purchase"}
+                  </Button>
+                )}
 
                 <p className="text-[11px] text-muted-foreground text-center">
                   7-day refund only if any issue found

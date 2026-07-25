@@ -46,6 +46,12 @@ const Wallet = () => {
     if (orderId) {
       verifyPayment(orderId);
     }
+    
+    // Check if amount is pre-filled from checkout
+    const amountParam = searchParams.get("amount");
+    if (amountParam && amount === "") {
+      setAmount(amountParam);
+    }
   }, [user, authLoading, navigate, searchParams]);
 
   const fetchTransactions = async () => {
