@@ -18,12 +18,6 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Ignore test webhooks in production
-    if (environment === 'test' && process.env.ZAPUPI_API_KEY !== 'PLACEHOLDER_KEY') {
-      console.log('Ignoring test webhook in production environment:', payload);
-      return res.status(200).json({ status: 'ok' });
-    }
-
     if (status === 'Success' || status === 'success') {
       // Find the transaction
       const { data: tx, error: txError } = await supabase

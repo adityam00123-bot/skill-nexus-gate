@@ -21,7 +21,7 @@ interface Transaction {
 }
 
 const Wallet = () => {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -32,6 +32,8 @@ const Wallet = () => {
   const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return;
+    
     if (!user) {
       navigate("/login?redirect=/wallet");
       return;
@@ -44,7 +46,7 @@ const Wallet = () => {
     if (orderId) {
       verifyPayment(orderId);
     }
-  }, [user, navigate, searchParams]);
+  }, [user, authLoading, navigate, searchParams]);
 
   const fetchTransactions = async () => {
     if (!user) return;
@@ -131,6 +133,18 @@ const Wallet = () => {
       setLoading(false);
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
