@@ -158,7 +158,6 @@ const Checkout = () => {
   };
 
   const handlePayment = async () => {
-    if (paymentMethod === "upi" && !upiId.includes("@")) {
     if (paymentMethod === "wallet" && (profile?.wallet_balance || 0) < total) {
       toast.error("Insufficient wallet balance. Please add funds.");
       return;
@@ -496,7 +495,6 @@ const Checkout = () => {
             </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   );
