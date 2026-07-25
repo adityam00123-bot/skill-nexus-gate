@@ -26,58 +26,79 @@ export default async function handler(req: any, res: any) {
       .single();
 
     if (courseError || !course || !course.telegram_channel_id) {
-      // Graceful return if no channel is configured
       return res.status(200).json({ success: true, telegram_channel_id: null });
     }
 
     const chatId = course.telegram_channel_id;
+
+    // Helper: fetch persistent access link for this channel
+    const fetchPersistentLink = async () => {
+      const { data } = await supabase
+        .from('telegram_bot_channels')
+        .select('persistent_access_link')
+        .eq('channel_id', chatId)
+        .maybeSingle();
+      return data?.persistent_access_link || null;
+    };
     
-    // 2. Check if user already has an invite or has joined
-    const { data: existingAccess } = await supabase
+    // 2. Check ALL existing access rows for this user+course (not just most recent)
+    const { data: allAccess } = await supabase
       .from('telegram_access')
       .select('*')
       .eq('user_id', user_id)
       .eq('course_id', course_id)
-      .order('created_at', { ascending: false })
-      .limit(1);
-      
-    if (existingAccess && existingAccess.length > 0) {
-      const access = existingAccess[0];
-      if (access.link_used) {
+      .order('created_at', { ascending: false });
+
+    if (allAccess && allAccess.length > 0) {
+      // Case A: User has already joined via any link
+      const usedLink = allAccess.find(a => a.link_used);
+      if (usedLink) {
+        const persistentLink = await fetchPersistentLink();
         return res.status(200).json({ 
           success: true, 
           telegram_channel_id: chatId,
-          already_joined: true
+          already_joined: true,
+          persistent_access_link: persistentLink
         });
       }
       
-      // If it's not used and not expired, return it
-      if (new Date(access.expires_at).getTime() > Date.now()) {
+      // Case B: An unused link that hasn't expired yet — reuse it
+      const validLink = allAccess.find(a => !a.link_used && new Date(a.expires_at).getTime() > Date.now());
+      if (validLink) {
         return res.status(200).json({ 
           success: true, 
           telegram_channel_id: chatId,
-          invite_link: access.invite_link,
-          expires_at: access.expires_at
+          invite_link: validLink.invite_link,
+          expires_at: validLink.expires_at
         });
+      }
+
+      // Case C: All existing links are expired and unused.
+      // Revoke them on Telegram to prevent leaked access, then generate a fresh one.
+      for (const expired of allAccess.filter(a => !a.link_used)) {
+        try {
+          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/revokeChatInviteLink`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, invite_link: expired.invite_link })
+          });
+        } catch (_) { /* best-effort revocation */ }
       }
     }
 
-    // Calculate expiry (10 minutes from now, in seconds for Telegram API)
+    // 3. Generate a new one-time invite link (first time, or previous expired)
     const expiresInMs = 10 * 60 * 1000;
     const expireDateSeconds = Math.floor((Date.now() + expiresInMs) / 1000);
     const expiresAtIso = new Date(Date.now() + expiresInMs).toISOString();
 
-    // 3. Call Telegram API to generate a one-time invite link
     let inviteLink = null;
     try {
       const tgResponse = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createChatInviteLink`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          member_limit: 1, // One-time use
+          member_limit: 1,
           expire_date: expireDateSeconds,
         }),
       });
@@ -88,7 +109,6 @@ export default async function handler(req: any, res: any) {
         inviteLink = tgData.result.invite_link;
       } else {
         console.error("Telegram API Error:", tgData);
-        // We do not throw here to allow the purchase to succeed gracefully without breaking
       }
     } catch (tgApiError) {
       console.error("Failed to call Telegram API:", tgApiError);
@@ -121,7 +141,6 @@ export default async function handler(req: any, res: any) {
 
   } catch (error: any) {
     console.error("Telegram generate-invite error:", error);
-    // Return graceful fallback so checkout isn't completely broken by this API
     return res.status(200).json({ success: false, error: 'Failed to generate invite link safely' });
   }
 }

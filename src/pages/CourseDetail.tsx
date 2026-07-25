@@ -106,6 +106,7 @@ const CourseDetail = () => {
   const [relatedCourses, setRelatedCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [persistentAccessLink, setPersistentAccessLink] = useState<string | null>(null);
 
   // Map a Supabase course row to the frontend Course type
   const mapDbCourse = (row: any) => ({
@@ -187,6 +188,18 @@ const CourseDetail = () => {
 
       setCourse(courseData);
       fetchRecommendations((courseData.category && courseData.category.length > 0) ? courseData.category[0] : "", courseData.instructor_name || "", id);
+
+      // Fetch persistent access link if the course has a telegram_channel_id
+      if (courseData.telegram_channel_id) {
+        const { data: channelData } = await supabase
+          .from('telegram_bot_channels')
+          .select('persistent_access_link')
+          .eq('channel_id', courseData.telegram_channel_id)
+          .maybeSingle();
+        if (channelData?.persistent_access_link) {
+          setPersistentAccessLink(channelData.persistent_access_link);
+        }
+      }
 
       // Fetch sections for this course
       const { data: sectionsData } = await (supabase as any)
@@ -614,7 +627,13 @@ const CourseDetail = () => {
                         <p className="font-semibold text-foreground">{purchased ? "You own this course" : "Included in Premium"}</p>
                         <p className="text-xs text-muted-foreground mt-1">Access via Telegram below</p>
                       </div>
-                      {course.telegram_link && (
+                      {persistentAccessLink ? (
+                        <a href={persistentAccessLink} target="_blank" rel="noopener noreferrer">
+                          <Button size="lg" className="w-full bg-[#0088cc] text-white hover:bg-[#0088cc]/90 font-semibold">
+                            <MessageCircle className="mr-2 h-5 w-5" /> Open Telegram Channel
+                          </Button>
+                        </a>
+                      ) : course.telegram_link && (
                         <a href={course.telegram_link} target="_blank" rel="noopener noreferrer">
                           <Button size="lg" className="w-full bg-info text-foreground hover:bg-info/90 font-semibold">
                             <MessageCircle className="mr-2 h-5 w-5" /> Join Telegram Channel

@@ -29,6 +29,7 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
   const [invite, setInvite] = useState<any>(null);
   const [joined, setJoined] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>("");
+  const [persistentLink, setPersistentLink] = useState<string | null>(null);
 
   // if dummy course with static link, just show it
   if (!isUUID(course.id) && course.telegramLink) {
@@ -62,6 +63,7 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
         const data = await res.json();
         if (data.success && data.already_joined) {
           setJoined(true);
+          if (data.persistent_access_link) setPersistentLink(data.persistent_access_link);
         } else if (data.success && data.invite_link) {
           setInvite(data);
           expiryTime = new Date(data.expires_at).getTime();
@@ -107,10 +109,17 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
 
   if (joined) {
     return (
-      <div className="mt-3 text-center p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+      <div className="mt-3 space-y-2 text-center p-3 bg-green-500/10 rounded-lg border border-green-500/20">
         <p className="text-green-500 text-sm font-semibold flex items-center justify-center gap-2">
           <CheckCircle className="h-4 w-4" /> Joined successfully!
         </p>
+        {persistentLink && (
+          <a href={persistentLink} target="_blank" rel="noopener noreferrer" className="block">
+            <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold">
+              <MessageCircle className="mr-2 h-4 w-4" /> Open Telegram Channel
+            </Button>
+          </a>
+        )}
       </div>
     );
   }
