@@ -24,6 +24,133 @@ const isUUID = (str: string) => {
   return uuidRegex.test(str);
 };
 
+function TelegramAccessCard({ course, user }: { course: any, user: any }) {
+  const [loading, setLoading] = useState(true);
+  const [invite, setInvite] = useState<any>(null);
+  const [joined, setJoined] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<string>("");
+
+  // if dummy course with static link, just show it
+  if (!isUUID(course.id) && course.telegramLink) {
+    return (
+      <div className="mt-3">
+        <a href={course.telegramLink} target="_blank" rel="noopener noreferrer" className="block">
+          <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white">
+            <MessageCircle className="mr-2 h-4 w-4" /> Access Course on Telegram
+          </Button>
+        </a>
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    if (!isUUID(course.id)) {
+      setLoading(false);
+      return;
+    }
+
+    let pollInterval: any;
+    let expiryTime: number;
+
+    const fetchInvite = async () => {
+      try {
+        const res = await fetch('/api/telegram/generate-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id, course_id: course.id })
+        });
+        const data = await res.json();
+        
+        if (data.success && data.invite_link) {
+          setInvite(data);
+          expiryTime = new Date(data.expires_at).getTime();
+          
+          pollInterval = setInterval(async () => {
+            // Update countdown
+            const now = new Date().getTime();
+            const distance = expiryTime - now;
+            if (distance < 0) {
+              setTimeLeft("Expired");
+            } else {
+              const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+              const s = Math.floor((distance % (1000 * 60)) / 1000);
+              setTimeLeft(`${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+            }
+
+            // Poll Supabase for join status
+            const { data: access } = await supabase
+              .from('telegram_access')
+              .select('link_used')
+              .eq('invite_link', data.invite_link)
+              .maybeSingle();
+              
+            if (access?.link_used) {
+              setJoined(true);
+              clearInterval(pollInterval);
+            }
+          }, 3000);
+        }
+      } catch (err) {
+        console.error("Failed to fetch invite", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchInvite();
+    
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [course.id, user.id]);
+
+  if (joined) {
+    return (
+      <div className="mt-3 text-center p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+        <p className="text-green-500 text-sm font-semibold flex items-center justify-center gap-2">
+          <CheckCircle className="h-4 w-4" /> Joined successfully!
+        </p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="mt-3 flex justify-center py-2"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
+  }
+
+  if (invite?.invite_link) {
+    return (
+      <div className="mt-3 space-y-3">
+        <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-lg text-left">
+          <p className="text-xs text-amber-600 dark:text-amber-500 font-medium leading-relaxed">
+            ⚠️ This is a one-time invite link tied to your account. Do not share it. If shared, whoever clicks it first will get access, and it cannot be regenerated.
+          </p>
+        </div>
+        <a href={invite.invite_link} target="_blank" rel="noopener noreferrer" className="block">
+          <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold shadow-md">
+            <MessageCircle className="mr-2 h-4 w-4" /> Join Telegram Channel
+          </Button>
+        </a>
+        {timeLeft !== "Expired" ? (
+          <p className="text-xs text-center font-medium text-[hsl(var(--warning))] animate-pulse">Link expires in {timeLeft}</p>
+        ) : (
+          <p className="text-xs text-center text-destructive">Link expired</p>
+        )}
+      </div>
+    );
+  }
+
+  // Only real courses without a channel fall back here (dummy courses are handled early)
+  return (
+    <div className="mt-3 p-3 bg-muted/30 rounded-lg text-center">
+      <p className="text-[11px] text-muted-foreground">
+        Course access will be sent to you shortly. Contact support if you don't hear back within 24 hours.
+      </p>
+    </div>
+  );
+}
+
+
 const Checkout = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -42,6 +169,7 @@ const Checkout = () => {
   const [useCoins, setUseCoins] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [purchasedCourses, setPurchasedCourses] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchCheckoutData = async () => {
@@ -110,6 +238,48 @@ const Checkout = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // ===== SUCCESS STATE =====
+  if (success) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col pt-16 px-4">
+        <div className="max-w-xl mx-auto w-full space-y-6 pb-12">
+          <div className="bg-card border border-border rounded-2xl p-8 space-y-6 shadow-sm">
+            <div className="text-6xl text-center">🎉</div>
+            <div className="text-center">
+              <h1 className="font-display font-bold text-3xl text-foreground">Payment Successful!</h1>
+              <p className="text-muted-foreground mt-2">You now have access to {purchasedCourses.length} course(s)</p>
+            </div>
+
+            <div className="space-y-6 mt-8">
+              {purchasedCourses.map(c => (
+                <div key={c.id} className="bg-muted/10 border border-border rounded-xl p-4">
+                  <div className="flex items-start gap-4">
+                    <img src={c.thumbnail} alt={c.title} className="w-24 h-16 rounded-lg object-cover shadow-sm shrink-0" />
+                    <div>
+                      <p className="font-bold text-foreground text-sm leading-tight mb-1">{c.title}</p>
+                      <p className="text-[11px] text-muted-foreground">by {c.instructor}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Telegram Access Logic */}
+                  <TelegramAccessCard course={c} user={user} />
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-4 border-t border-border">
+              <Link to="/purchase-history" className="block">
+                <Button size="lg" variant="outline" className="w-full font-semibold">
+                  View Purchase History
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -254,6 +424,7 @@ const Checkout = () => {
         addPurchasedIds(dummyCourses.map(c => c.id));
       }
 
+      setPurchasedCourses([...checkoutCourses]);
       setSuccess(true);
     } catch (e: any) {
       toast.error(e.message || "Payment failed. Please try again.");
@@ -261,47 +432,6 @@ const Checkout = () => {
       setProcessing(false);
     }
   };
-
-  // ===== SUCCESS STATE =====
-  if (success) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="max-w-md w-full text-center space-y-6 py-12">
-          <div className="bg-card border border-border rounded-2xl p-8 space-y-6">
-            <div className="text-6xl">🎉</div>
-            <div>
-              <h1 className="font-display font-bold text-2xl text-foreground">Payment Successful!</h1>
-              <p className="text-muted-foreground mt-2">You now have access to {checkoutCourses.length} course(s)</p>
-            </div>
-
-            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-              {checkoutCourses.map(c => (
-                <div key={c.id} className="flex items-center gap-3 bg-muted/30 rounded-lg p-3">
-                  <img src={c.thumbnail} alt={c.title} className="w-16 h-11 rounded object-cover shrink-0" />
-                  <p className="font-semibold text-foreground text-xs text-left line-clamp-2">{c.title}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-3">
-              {checkoutCourses.length === 1 && checkoutCourses[0].telegramLink && (
-                <a href={checkoutCourses[0].telegramLink} target="_blank" rel="noopener noreferrer" className="block">
-                  <Button size="lg" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold">
-                    <MessageCircle className="mr-2 h-5 w-5" /> Access Course on Telegram
-                  </Button>
-                </a>
-              )}
-              <Link to="/purchase-history" className="block">
-                <Button size="lg" variant="outline" className="w-full font-semibold">
-                  View Purchase History
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // ===== CHECKOUT LAYOUT =====
   return (

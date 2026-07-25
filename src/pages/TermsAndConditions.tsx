@@ -125,6 +125,9 @@ const TermsAndConditions = () => {
                   prohibited.
                 </li>
                 <li>
+                  <strong>Telegram Course Access Links:</strong> Upon purchase, you may receive a one-time use Telegram invite link to access your course. This link is tied to your account and expires after a short period. Once the link is clicked by any user, it becomes invalid. CourseVerse is not responsible for reassigning leaked or shared links. If you share your link and lose access, no refund or replacement link will be provided.
+                </li>
+                <li>
                   CourseVerse reserves the right to update, modify, or remove
                   course content at any time without prior notice.
                 </li>

@@ -74,7 +74,7 @@ interface CourseForm {
   title: string; short_description: string; description: string; category: string[];
   subcategory: string[];
   instructor_name: string; instructor_bio: string; price: string; original_price: string;
-  thumbnail_url: string; telegram_link: string; level: string; language: string;
+  thumbnail_url: string; telegram_link: string; telegram_channel_id: string; level: string; language: string;
   duration_hours: string; total_lectures: string; manual_rating: string; manual_students: string;
   is_featured: boolean; is_free: boolean; is_published: boolean;
   what_you_learn: string[]; requirements: string[]; tags: string[];
@@ -84,7 +84,7 @@ const emptyForm: CourseForm = {
   title: "", short_description: "", description: "", category: [],
   subcategory: [],
   instructor_name: "", instructor_bio: "", price: "", original_price: "",
-  thumbnail_url: "", telegram_link: "", level: "Beginner", language: "Hindi",
+  thumbnail_url: "", telegram_link: "", telegram_channel_id: "", level: "Beginner", language: "Hindi",
   duration_hours: "", total_lectures: "", manual_rating: "", manual_students: "0",
   is_featured: false, is_free: false, is_published: true,
   what_you_learn: [], requirements: [], tags: [],
@@ -225,6 +225,7 @@ export default function AdminCourses() {
       price: c.price != null && c.price !== 0 ? String(c.price) : "",
       original_price: c.original_price != null && c.original_price !== 0 ? String(c.original_price) : "",
       thumbnail_url: c.thumbnail_url || "", telegram_link: c.telegram_link || "",
+      telegram_channel_id: c.telegram_channel_id || "",
       level: c.level || "Beginner", language: c.language || "Hindi",
       duration_hours: c.duration_hours != null && c.duration_hours !== 0 ? String(c.duration_hours) : "",
       total_lectures: c.total_lectures != null && c.total_lectures !== 0 ? String(c.total_lectures) : "",
@@ -250,6 +251,7 @@ export default function AdminCourses() {
     original_price: f.original_price !== "" ? Number(f.original_price) : null,
     thumbnail_url: f.thumbnail_url,
     telegram_link: f.telegram_link,
+    telegram_channel_id: f.telegram_channel_id || null,
     level: f.level,
     language: f.language,
     duration_hours: f.duration_hours !== "" ? Number(f.duration_hours) : null,
@@ -1014,9 +1016,15 @@ export default function AdminCourses() {
 
             {/* Section 5: Links */}
             <SectionHeading title="Links" />
-            <div className="space-y-1.5">
-              <Label>Telegram Link</Label>
-              <Input value={form.telegram_link} onChange={e => setForm(f => ({ ...f, telegram_link: e.target.value }))} className="bg-[#0F172A] border-[#334155]" />
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Telegram Link (Legacy)</Label>
+                <Input value={form.telegram_link} onChange={e => setForm(f => ({ ...f, telegram_link: e.target.value }))} className="bg-[#0F172A] border-[#334155]" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Telegram Channel ID (Automated Access)</Label>
+                <Input value={form.telegram_channel_id} onChange={e => setForm(f => ({ ...f, telegram_channel_id: e.target.value }))} placeholder="-1001234567890" className="bg-[#0F172A] border-[#334155]" />
+              </div>
             </div>
 
             {/* Section 6: Description */}

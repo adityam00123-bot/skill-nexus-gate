@@ -1179,3 +1179,33 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
 --   4. Regenerate your types.ts if needed:
 --      npx supabase gen types typescript --project-id <your-project-ref> > src/integrations/supabase/types.ts
 -- ============================================================================
+- -   A d d   t e l e g r a m _ c h a n n e l _ i d   t o   c o u r s e s  
+ A L T E R   T A B L E   p u b l i c . c o u r s e s  
+ A D D   C O L U M N   I F   N O T   E X I S T S   t e l e g r a m _ c h a n n e l _ i d   t e x t ;  
+  
+ - -   C r e a t e   t e l e g r a m _ a c c e s s   t a b l e  
+ C R E A T E   T A B L E   I F   N O T   E X I S T S   p u b l i c . t e l e g r a m _ a c c e s s   (  
+         i d   u u i d   P R I M A R Y   K E Y   D E F A U L T   g e n _ r a n d o m _ u u i d ( ) ,  
+         u s e r _ i d   u u i d   N O T   N U L L   R E F E R E N C E S   a u t h . u s e r s ( i d )   O N   D E L E T E   C A S C A D E ,  
+         c o u r s e _ i d   u u i d   N O T   N U L L   R E F E R E N C E S   p u b l i c . c o u r s e s ( i d )   O N   D E L E T E   C A S C A D E ,  
+         i n v i t e _ l i n k   t e x t   N O T   N U L L ,  
+         t e l e g r a m _ c h a n n e l _ i d   t e x t   N O T   N U L L ,  
+         l i n k _ u s e d   b o o l e a n   D E F A U L T   f a l s e ,  
+         e x p i r e s _ a t   t i m e s t a m p t z   N O T   N U L L ,  
+         j o i n e d _ a t   t i m e s t a m p t z ,  
+         c r e a t e d _ a t   t i m e s t a m p t z   D E F A U L T   n o w ( )  
+ ) ;  
+  
+ - -   R L S   P o l i c i e s  
+ A L T E R   T A B L E   p u b l i c . t e l e g r a m _ a c c e s s   E N A B L E   R O W   L E V E L   S E C U R I T Y ;  
+  
+ C R E A T E   P O L I C Y   " U s e r s   c a n   r e a d   o w n   t e l e g r a m _ a c c e s s "  
+ O N   p u b l i c . t e l e g r a m _ a c c e s s  
+ F O R   S E L E C T  
+ U S I N G   ( a u t h . u i d ( )   =   u s e r _ i d ) ;  
+  
+ - -   P r o v i d e   s e r v i c e   r o l e   a c c e s s   f o r   a l l   o p e r a t i o n s   ( n e e d e d   f o r   b a c k e n d   A P I s )  
+ - -   S i n c e   s e r v i c e   r o l e   b y p a s s e s   R L S   b y   d e f a u l t ,   w e   t e c h n i c a l l y   d o n ' t   n e e d   a   s p e c i f i c   p o l i c y ,  
+ - -   b u t   w e   m i g h t   w a n t   o n e   i f   a c c e s s i n g   v i a   a n o n / a u t h e n t i c a t e d   i n   s o m e   o t h e r   w a y s .  
+ - -   H o w e v e r ,   w e   o n l y   d o   i n s e r t s / u p d a t e s   v i a   t h e   A P I   u s i n g   s e r v i c e   r o l e ,   s o   t h i s   i s   f i n e .  
+ 
