@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -31,7 +31,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       });
   }, [user]);
 
-  const isPurchased = (courseId: string) => purchasedIds.has(courseId);
+  const isPurchased = useCallback((courseId: string) => purchasedIds.has(courseId), [purchasedIds]);
 
   const addPurchasedIds = (ids: string[]) => {
     setPurchasedIds((prev) => {

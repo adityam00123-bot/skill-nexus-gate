@@ -257,14 +257,6 @@ const Checkout = () => {
     fetchCheckoutData();
   }, [courseId, cartIds, isPurchased]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   // ===== SUCCESS STATE =====
   if (success) {
     return (
@@ -303,6 +295,14 @@ const Checkout = () => {
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
