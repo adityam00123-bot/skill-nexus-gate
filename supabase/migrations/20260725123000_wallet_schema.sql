@@ -86,8 +86,8 @@ BEGIN
   -- Insert purchases
   FOREACH cid IN ARRAY p_course_ids
   LOOP
-    INSERT INTO public.purchases (user_id, course_id, amount, payment_method, payment_status)
-    VALUES (p_user_id, cid, 0, 'wallet', 'completed');
+    INSERT INTO public.purchases (user_id, course_id, price_paid)
+    VALUES (p_user_id, cid, p_amount / COALESCE(array_length(p_course_ids, 1), 1));
   END LOOP;
 
   RETURN json_build_object('success', true);

@@ -33,7 +33,11 @@ export default async function handler(req: any, res: any) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // 2. Create pending transaction in Supabase
+    // 2. Generate a ZapUPI-compliant Order ID
+    const zapUpiOrderId = 'ORD' + Date.now() + Math.floor(Math.random() * 1000);
+    console.log(`Generated ZapUPI Order ID: ${zapUpiOrderId}`);
+
+    // 3. Create pending transaction in Supabase
     const { data: tx, error: txError } = await supabase
       .from('wallet_transactions')
       .insert({
@@ -42,6 +46,7 @@ export default async function handler(req: any, res: any) {
         type: 'credit',
         status: 'pending',
         payment_gateway: 'ZapUPI',
+        gateway_order_id: zapUpiOrderId,
         description: `Wallet Top-up: ₹${amount}`,
       })
       .select()
@@ -52,33 +57,27 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: 'Failed to create transaction' });
     }
 
-    // 3. Call ZapUPI create-order API
+    // 4. Call ZapUPI create-order API
     const zapUpiPayload = {
       zap_key: ZAPUPI_API_KEY,
-      order_id: tx.id,
+      order_id: zapUpiOrderId,
       amount: amount.toString(),
       customer_mobile: profile.telegram_username || "9999999999", // ZapUPI expects mobile, using dummy if not available
       remark: `WalletTopup|${userId}`,
       webhook_url: `https://courseverse-beta.vercel.app/api/zapupi-webhook`,
-      success_url: `https://courseverse-beta.vercel.app/wallet?order_id=${tx.id}`,
-      failed_url: `https://courseverse-beta.vercel.app/wallet?order_id=${tx.id}`,
-      timeout_url: `https://courseverse-beta.vercel.app/wallet?order_id=${tx.id}`,
+      success_url: `https://courseverse-beta.vercel.app/wallet?order_id=${zapUpiOrderId}`,
+      failed_url: `https://courseverse-beta.vercel.app/wallet?order_id=${zapUpiOrderId}`,
+      timeout_url: `https://courseverse-beta.vercel.app/wallet?order_id=${zapUpiOrderId}`,
     };
 
     // If using placeholder key, simulate ZapUPI response
     if (ZAPUPI_API_KEY === 'PLACEHOLDER_KEY') {
       console.log('Simulating ZapUPI create order with payload:', zapUpiPayload);
-      // Update transaction with fake gateway order ID
-      const fakeGatewayOrderId = `ZAP_${Date.now()}`;
-      await supabase
-        .from('wallet_transactions')
-        .update({ gateway_order_id: fakeGatewayOrderId })
-        .eq('id', tx.id);
 
       return res.status(200).json({
         success: true,
-        payment_url: `https://pay.zapupi.com/mock-checkout/${fakeGatewayOrderId}`,
-        order_id: fakeGatewayOrderId,
+        payment_url: `https://pay.zapupi.com/mock-checkout/${zapUpiOrderId}`,
+        order_id: zapUpiOrderId,
         transaction_id: tx.id
       });
     }
@@ -92,22 +91,17 @@ export default async function handler(req: any, res: any) {
     });
 
     const zapData = await zapRes.json();
+    console.log(`ZapUPI response for order ${zapUpiOrderId}:`, zapData);
 
     if (zapData.status !== 'success' && zapData.status !== 'Success') {
       console.error('ZapUPI error:', zapData);
-      return res.status(500).json({ error: 'Failed to initialize payment gateway' });
+      return res.status(500).json({ error: 'Failed to initialize payment gateway', details: zapData });
     }
-
-    // Update transaction with gateway order ID
-    await supabase
-      .from('wallet_transactions')
-      .update({ gateway_order_id: zapData.order_id })
-      .eq('id', tx.id);
 
     return res.status(200).json({
       success: true,
       payment_url: zapData.payment_url,
-      order_id: zapData.order_id,
+      order_id: zapData.order_id || zapUpiOrderId,
       transaction_id: tx.id
     });
 
