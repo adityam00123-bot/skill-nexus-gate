@@ -278,7 +278,9 @@ export default function AdminCourses() {
     if (!form.title.trim()) errors.push("Course Title is required");
     if (form.category.length === 0) errors.push("Category is required");
     if (form.price !== "" && Number(form.price) < 0) errors.push("Price must be >= 0");
-    if (!form.telegram_link.trim()) errors.push("Telegram Link is required");
+    if (!form.telegram_link.trim() && !form.telegram_channel_id?.trim()) {
+      errors.push("Either a Telegram Link (Legacy) or a Telegram Channel ID is required");
+    }
     
     const ms = Number(form.manual_students);
     if (form.manual_students === "" || isNaN(ms) || ms < 0 || !Number.isInteger(ms)) errors.push("Manual Students must be an integer >= 0");
