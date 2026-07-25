@@ -313,7 +313,7 @@ const RefundPolicy = () => {
               <div className="mt-4 p-4 rounded-lg bg-muted/30 border border-border space-y-1">
                 <p className="text-foreground font-medium">CourseVerse</p>
                 <p className="text-muted-foreground text-sm">
-                  Owner: Aditya Mishra
+                  Company: CourseVerse
                 </p>
                 <p className="text-muted-foreground text-sm">
                   Email:{" "}

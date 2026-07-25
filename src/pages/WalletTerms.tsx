@@ -57,7 +57,7 @@ const WalletTerms = () => {
                 3. Adding Funds (Top-Up)
               </h2>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 leading-relaxed">
-                <li>Users can add funds via UPI through our payment gateway (ZapUPI).</li>
+                <li>Users can add funds via UPI through our secure payment gateway.</li>
                 <li>Funds are credited after successful payment verification.</li>
                 <li>Top-up amounts are non-refundable once credited to the wallet.</li>
               </ul>
@@ -117,7 +117,7 @@ const WalletTerms = () => {
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground">
                   <User className="w-5 h-5 text-primary" />
-                  <span>Owner: Aditya Mishra</span>
+                  <span>Company: CourseVerse</span>
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground">
                   <Globe className="w-5 h-5 text-primary" />

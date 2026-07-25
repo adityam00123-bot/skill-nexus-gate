@@ -42,7 +42,7 @@ const PrivacyPolicy = () => {
               </h2>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 leading-relaxed">
                 <li><strong>Account Data:</strong> Name, email address, and phone number when you register.</li>
-                <li><strong>Payment Data:</strong> Processed via ZapUPI and our payment gateways. We do not store credit card or payment details on our servers.</li>
+                <li><strong>Payment Data:</strong> Processed via our secure payment partners. We do not store credit card or payment details on our servers.</li>
                 <li><strong>Usage Data:</strong> Information about pages visited and courses viewed on our platform.</li>
                 <li><strong>Device Information:</strong> Device type, operating system, and browser information.</li>
               </ul>
@@ -70,8 +70,8 @@ const PrivacyPolicy = () => {
                 We do not sell your personal data. We share information only with trusted third-party services necessary to operate our platform:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 leading-relaxed">
-                <li><strong>Supabase:</strong> For secure database management and authentication.</li>
-                <li><strong>ZapUPI:</strong> For processing payments securely.</li>
+                <li><strong>Database Providers:</strong> For secure database management and authentication.</li>
+                <li><strong>Payment Partners:</strong> For processing payments securely.</li>
                 <li><strong>Telegram:</strong> For course delivery and communication.</li>
               </ul>
             </div>
@@ -92,7 +92,7 @@ const PrivacyPolicy = () => {
                 6. Data Security
               </h2>
               <p className="text-muted-foreground leading-relaxed">
-                We implement robust security measures, including data encryption, secure authentication via Supabase, and HTTPS protocols across our platform to protect your personal information from unauthorized access.
+                We implement robust security measures, including data encryption, secure authentication via our secure database provider, and HTTPS protocols across our platform to protect your personal information from unauthorized access.
               </p>
             </div>
 
@@ -139,7 +139,7 @@ const PrivacyPolicy = () => {
               </p>
               <div className="bg-card border border-border rounded-lg p-6">
                 <ul className="text-muted-foreground space-y-2 leading-relaxed">
-                  <li><strong>Owner:</strong> Aditya Mishra</li>
+                  <li><strong>Company:</strong> CourseVerse</li>
                   <li><strong>Email:</strong> <a href="mailto:courseversehere@gmail.com" className="text-primary hover:underline">courseversehere@gmail.com</a></li>
                   <li><strong>Website:</strong> <a href="https://skill-nexus-gate.vercel.app" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">skill-nexus-gate.vercel.app</a></li>
                 </ul>

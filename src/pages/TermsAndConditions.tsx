@@ -63,7 +63,7 @@ const TermsAndConditions = () => {
                 plans designed to help individuals learn about stock markets,
                 trading strategies, and personal finance. Course content is
                 delivered digitally via Telegram after successful payment.
-                CourseVerse is owned and operated by Aditya Mishra, based in
+                CourseVerse is owned and operated by CourseVerse, based in
                 India.
               </p>
             </div>
@@ -176,7 +176,7 @@ const TermsAndConditions = () => {
               </h2>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 leading-relaxed">
                 <li>
-                  All payments are processed securely through Cashfree Payments,
+                  All payments are processed securely through our payment partners,
                   a RBI-authorised payment aggregator.
                 </li>
                 <li>
@@ -311,7 +311,7 @@ const TermsAndConditions = () => {
               <div className="mt-4 p-4 rounded-lg bg-muted/30 border border-border space-y-1">
                 <p className="text-foreground font-medium">CourseVerse</p>
                 <p className="text-muted-foreground text-sm">
-                  Owner: Aditya Mishra
+                  Company: CourseVerse
                 </p>
                 <p className="text-muted-foreground text-sm">
                   Email:{" "}
