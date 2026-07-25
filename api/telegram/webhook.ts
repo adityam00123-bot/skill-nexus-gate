@@ -48,18 +48,75 @@ export default async function handler(req: any, res: any) {
         const channelId = chat.id.toString();
         const channelTitle = chat.title || 'Unknown Channel';
 
+        let persistentLink = null;
+        if (newStatus === 'administrator') {
+          // Generate a persistent link if the bot was added as an admin
+          const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+          if (TELEGRAM_BOT_TOKEN) {
+            try {
+              const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createChatInviteLink`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: channelId,
+                  creates_join_request: true
+                })
+              });
+              const tgData = await tgRes.json();
+              if (tgData.ok && tgData.result.invite_link) {
+                persistentLink = tgData.result.invite_link;
+              }
+            } catch (err) {
+              console.error("Failed to generate persistent link:", err);
+            }
+          }
+        }
+
         // Upsert the channel info
+        const payload: any = {
+          channel_id: channelId,
+          channel_title: channelTitle,
+          detected_at: new Date().toISOString()
+        };
+        if (persistentLink) {
+          payload.persistent_access_link = persistentLink;
+        }
+
         const { error } = await supabase
           .from('telegram_bot_channels')
-          .upsert({
-            channel_id: channelId,
-            channel_title: channelTitle,
-            detected_at: new Date().toISOString()
-          }, { onConflict: 'channel_id' });
+          .upsert(payload, { onConflict: 'channel_id' });
 
         if (error) {
           console.error("Failed to insert/update telegram bot channel:", error);
         }
+      }
+    }
+
+    if (update.chat_join_request) {
+      const joinReq = update.chat_join_request;
+      const chatId = joinReq.chat.id;
+      const userId = joinReq.from.id;
+      const username = joinReq.from.username || null;
+      
+      const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+      if (TELEGRAM_BOT_TOKEN) {
+        // Decline the request
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/declineChatJoinRequest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            user_id: userId
+          })
+        });
+
+        // Log it
+        await supabase.from('telegram_join_requests').insert({
+          channel_id: chatId.toString(),
+          telegram_user_id: userId,
+          telegram_username: username,
+          timestamp: new Date().toISOString()
+        });
       }
     }
   } catch (error) {

@@ -18,6 +18,7 @@ export interface Course {
   thumbnail: string;
   tags: string[];
   telegramLink: string;
+  persistentAccessLink?: string;
   featured?: boolean;
 }
 

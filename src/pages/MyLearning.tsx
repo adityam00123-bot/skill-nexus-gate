@@ -87,13 +87,26 @@ const CourseRow = ({
         </div>
       )}
       {showResume && (
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <Button
             size="sm"
             className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs gap-1.5 h-8"
           >
             <Play className="h-3.5 w-3.5" /> Resume Learning
           </Button>
+          {(course.persistentAccessLink || course.telegramLink) && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-primary/20 text-primary hover:bg-primary/10 text-xs gap-1.5 h-8"
+              onClick={(e) => {
+                e.preventDefault();
+                window.open(course.persistentAccessLink || course.telegramLink, "_blank");
+              }}
+            >
+              <MessageCircle className="h-3.5 w-3.5" /> Open Telegram Channel
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -161,28 +174,39 @@ const MyLearning = () => {
       if (realIds.length > 0) {
         const { data: courseRows } = await supabase
           .from("courses")
-          .select("id, title, description, short_description, instructor_name, thumbnail_url, price, original_price, category, duration_hours, total_lectures, level, telegram_link")
+          .select(`
+            id, title, description, short_description, instructor_name, thumbnail_url, price, original_price, category, duration_hours, total_lectures, level, telegram_link,
+            telegram_bot_channels(persistent_access_link)
+          `)
           .in("id", realIds);
 
-        dbFetchedCourses = (courseRows || []).map((c: any) => ({
-          id: c.id,
-          title: c.title,
-          instructor: c.instructor_name || "Unknown Instructor",
-          thumbnail: c.thumbnail_url || "/placeholder.svg",
-          price: Number(c.price) || 0,
-          originalPrice: Number(c.original_price) || Number(c.price) || 0,
-          category: c.category || "Trading",
-          subcategory: "",
-          duration: c.duration_hours ? `${c.duration_hours}h` : "0h",
-          lessons: Number(c.total_lectures) || 0,
-          level: c.level || "Beginner",
-          description: c.short_description || c.description || "",
-          longDescription: c.description || "",
-          rating: 0,
-          students: 0,
-          tags: [],
-          telegramLink: c.telegram_link || "",
-        } as Course));
+        dbFetchedCourses = (courseRows || []).map((c: any) => {
+          let persistentLink = null;
+          if (c.telegram_bot_channels && c.telegram_bot_channels.length > 0) {
+            persistentLink = c.telegram_bot_channels[0].persistent_access_link;
+          }
+
+          return {
+            id: c.id,
+            title: c.title,
+            instructor: c.instructor_name || "Unknown Instructor",
+            thumbnail: c.thumbnail_url || "/placeholder.svg",
+            price: Number(c.price) || 0,
+            originalPrice: Number(c.original_price) || Number(c.price) || 0,
+            category: c.category || "Trading",
+            subcategory: "",
+            duration: c.duration_hours ? `${c.duration_hours}h` : "0h",
+            lessons: Number(c.total_lectures) || 0,
+            level: c.level || "Beginner",
+            description: c.short_description || c.description || "",
+            longDescription: c.description || "",
+            rating: 0,
+            students: 0,
+            tags: [],
+            telegramLink: c.telegram_link || "",
+            persistentAccessLink: persistentLink
+          } as Course;
+        });
       }
 
       // Step 3: Look up dummy courses from local data + context
