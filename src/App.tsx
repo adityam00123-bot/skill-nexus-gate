@@ -44,6 +44,7 @@ import CvCoins from "./pages/CvCoins";
 import Checkout from "./pages/Checkout";
 import SubscriptionCheckout from "./pages/SubscriptionCheckout";
 import PaymentSuccess from "./pages/PaymentSuccess";
+import Wallet from "./pages/Wallet";
 import AdminRoute from "./components/admin/AdminRoute";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -105,6 +106,7 @@ const App = () => (
                   <Route path="/checkout" element={<Checkout />} />
                   <Route path="/subscription-checkout" element={<SubscriptionCheckout />} />
                   <Route path="/payment-success" element={<PaymentSuccess />} />
+                  <Route path="/wallet" element={<Wallet />} />
                   <Route path="/terms" element={<TermsAndConditions />} />
                   <Route path="/refund-policy" element={<RefundPolicy />} />
                   <Route path="/privacy" element={<PrivacyPolicy />} />

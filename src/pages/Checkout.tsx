@@ -30,7 +30,7 @@ const Checkout = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const courseId = searchParams.get("courseId") || searchParams.get("course") || "";
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { cartIds, removeFromCart } = useCartContext();
   const { isPurchased, addPurchasedIds } = usePurchaseContext();
   const { balance, spendCoins } = useCvCoins();
@@ -44,7 +44,6 @@ const Checkout = () => {
   const [cardCvv, setCardCvv] = useState("");
   const [cardName, setCardName] = useState("");
   const [selectedBank, setSelectedBank] = useState("");
-  const [mobileNumber, setMobileNumber] = useState("");
   const [coupon, setCoupon] = useState("");
   const [couponApplied, setCouponApplied] = useState(false);
   const [couponError, setCouponError] = useState(false);
@@ -181,8 +180,8 @@ const Checkout = () => {
       toast.error("Please select a bank");
       return;
     }
-    if (paymentMethod === "wallet" && !mobileNumber) {
-      toast.error("Please enter your mobile number");
+    if (paymentMethod === "wallet" && (profile?.wallet_balance || 0) < total) {
+      toast.error("Insufficient wallet balance. Please add funds.");
       return;
     }
 
@@ -202,8 +201,18 @@ const Checkout = () => {
           price_paid: c.price - (realCourses.length > 0 ? (couponDiscount + coinDiscount) / realCourses.length : 0),
         }));
 
-        const { error } = await supabase.from("purchases").insert(rows);
-        if (error) throw error;
+        if (paymentMethod === "wallet") {
+          const { data: rpcRes, error: rpcError } = await supabase.rpc("process_wallet_purchase", {
+            p_user_id: user.id,
+            p_amount: total,
+            p_course_ids: realCourses.map(c => c.id)
+          });
+          if (rpcError) throw rpcError;
+          if (!rpcRes.success) throw new Error(rpcRes.error || "Wallet purchase failed");
+        } else {
+          const { error } = await supabase.from("purchases").insert(rows);
+          if (error) throw error;
+        }
         
         // Subscription Logic Injection
         try {
@@ -434,21 +443,23 @@ const Checkout = () => {
                   </div>
                 </PaymentOption>
 
-                {/* Mobile Wallets */}
+                {/* CourseVerse Wallet */}
                 <PaymentOption
                   selected={paymentMethod === "wallet"}
                   onClick={() => setPaymentMethod("wallet")}
-                  label="Mobile Wallets"
-                  description="Paytm, PhonePe"
+                  label="CourseVerse Wallet"
+                  description={`Balance: ₹${(profile?.wallet_balance || 0).toLocaleString()}`}
                   icon={<Wallet className="h-5 w-5" />}
                 >
                   <div className="mt-3">
-                    <Input
-                      placeholder="Enter mobile number"
-                      value={mobileNumber}
-                      onChange={(e) => setMobileNumber(e.target.value)}
-                      className="bg-background"
-                    />
+                    {(profile?.wallet_balance || 0) < total ? (
+                       <div className="space-y-2">
+                         <p className="text-sm text-destructive">Insufficient balance. Please add funds to your wallet.</p>
+                         <Link to="/wallet" target="_blank"><Button size="sm" variant="outline" className="w-full">Add Funds</Button></Link>
+                       </div>
+                    ) : (
+                       <p className="text-sm text-green-500 font-medium">Sufficient balance available. Amount will be deducted securely.</p>
+                    )}
                   </div>
                 </PaymentOption>
               </div>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Search, Menu, X, Heart, ShoppingCart, Bell, Sun, Moon, LogIn, UserPlus, LogOut, Check, Trash2, BookOpen, DollarSign, Tag, RefreshCw, Shield } from "lucide-react";
+import { Search, Menu, X, Heart, ShoppingCart, Bell, Sun, Moon, LogIn, UserPlus, LogOut, Check, Trash2, BookOpen, DollarSign, Tag, RefreshCw, Shield, Wallet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ const profileMenuItems = [
   { label: "Payment Methods", to: "/settings/payments" },
   { label: "Subscription", to: "/billing" },
   { label: "CV Coins", to: "/cv-coins" },
+  { label: "My Wallet", to: "/wallet" },
   { label: "Purchase History", to: "/purchase-history" },
   { divider: true },
   { label: "Edit Profile", to: "/settings/profile" },
@@ -213,6 +214,14 @@ const Navbar = () => {
 
           {isLoggedIn ? (
             <>
+              {/* Wallet Chip */}
+              <Link to="/wallet">
+                <Button variant="outline" size="sm" className="hidden sm:flex items-center gap-1.5 h-9 bg-primary/5 text-primary border-primary/20 hover:bg-primary/10 mr-1">
+                  <Wallet className="h-4 w-4" />
+                  <span className="font-semibold">₹{(profile?.wallet_balance || 0).toLocaleString()}</span>
+                </Button>
+              </Link>
+
               {/* Wishlist */}
               <Tooltip>
                 <TooltipTrigger asChild>
