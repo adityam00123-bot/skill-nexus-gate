@@ -53,6 +53,7 @@ export default async function handler(req: any, res: any) {
       // Case A: User has already joined via any link
       const usedLink = allAccess.find(a => a.link_used);
       if (usedLink) {
+        console.log(`[generate-invite] Case A: already_joined for user=${user_id} course=${course_id}`);
         const persistentLink = await fetchPersistentLink();
         return res.status(200).json({ 
           success: true, 
@@ -65,6 +66,7 @@ export default async function handler(req: any, res: any) {
       // Case B: An unused link that hasn't expired yet — reuse it
       const validLink = allAccess.find(a => !a.link_used && new Date(a.expires_at).getTime() > Date.now());
       if (validLink) {
+        console.log(`[generate-invite] Case B: returning EXISTING link for user=${user_id} course=${course_id}, expires_at=${validLink.expires_at}`);
         return res.status(200).json({ 
           success: true, 
           telegram_channel_id: chatId,
@@ -75,6 +77,7 @@ export default async function handler(req: any, res: any) {
 
       // Case C: All existing links are expired and unused.
       // Revoke them on Telegram to prevent leaked access, then generate a fresh one.
+      console.log(`[generate-invite] Case C: all ${allAccess.length} links expired for user=${user_id} course=${course_id}, revoking and generating new`);
       for (const expired of allAccess.filter(a => !a.link_used)) {
         try {
           await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/revokeChatInviteLink`, {
@@ -87,6 +90,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // 3. Generate a new one-time invite link (first time, or previous expired)
+    console.log(`[generate-invite] Generating NEW link for user=${user_id} course=${course_id}`);
     const expiresInMs = 10 * 60 * 1000;
     const expireDateSeconds = Math.floor((Date.now() + expiresInMs) / 1000);
     const expiresAtIso = new Date(Date.now() + expiresInMs).toISOString();

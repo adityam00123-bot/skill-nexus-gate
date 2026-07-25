@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import {
   CheckCircle, MessageCircle, Shield, CreditCard, Smartphone,
@@ -30,6 +30,7 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
   const [joined, setJoined] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>("");
   const [persistentLink, setPersistentLink] = useState<string | null>(null);
+  const hasFetched = useRef(false);
 
   // if dummy course with static link, just show it
   if (!isUUID(course.id) && course.telegramLink) {
@@ -50,8 +51,11 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
       return;
     }
 
+    // Prevent duplicate API calls on re-render / tab switch
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
     let pollInterval: any;
-    let expiryTime: number;
 
     const fetchInvite = async () => {
       try {
@@ -66,11 +70,20 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
           if (data.persistent_access_link) setPersistentLink(data.persistent_access_link);
         } else if (data.success && data.invite_link) {
           setInvite(data);
-          expiryTime = new Date(data.expires_at).getTime();
+          const expiryTime = new Date(data.expires_at).getTime();
+
+          // Set countdown immediately (don't wait for first interval tick)
+          const initDistance = expiryTime - Date.now();
+          if (initDistance < 0) {
+            setTimeLeft("Expired");
+          } else {
+            const m = Math.floor((initDistance % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((initDistance % (1000 * 60)) / 1000);
+            setTimeLeft(`${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+          }
           
           pollInterval = setInterval(async () => {
-            // Update countdown
-            const now = new Date().getTime();
+            const now = Date.now();
             const distance = expiryTime - now;
             if (distance < 0) {
               setTimeLeft("Expired");
@@ -116,7 +129,7 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
         {persistentLink && (
           <a href={persistentLink} target="_blank" rel="noopener noreferrer" className="block">
             <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold">
-              <MessageCircle className="mr-2 h-4 w-4" /> Open Telegram Channel
+              <MessageCircle className="mr-2 h-4 w-4" /> View Course
             </Button>
           </a>
         )}
