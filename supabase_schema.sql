@@ -1208,4 +1208,35 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
  - -   S i n c e   s e r v i c e   r o l e   b y p a s s e s   R L S   b y   d e f a u l t ,   w e   t e c h n i c a l l y   d o n ' t   n e e d   a   s p e c i f i c   p o l i c y ,  
  - -   b u t   w e   m i g h t   w a n t   o n e   i f   a c c e s s i n g   v i a   a n o n / a u t h e n t i c a t e d   i n   s o m e   o t h e r   w a y s .  
  - -   H o w e v e r ,   w e   o n l y   d o   i n s e r t s / u p d a t e s   v i a   t h e   A P I   u s i n g   s e r v i c e   r o l e ,   s o   t h i s   i s   f i n e .  
- 
+ -- Telegram Bot Channels Table
+
+CREATE TABLE IF NOT EXISTS public.telegram_bot_channels (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    channel_id text NOT NULL UNIQUE,
+    channel_title text NOT NULL,
+    detected_at timestamptz DEFAULT now(),
+    assigned_to_course_id uuid REFERENCES public.courses(id) ON DELETE SET NULL
+);
+
+-- RLS Policies
+ALTER TABLE public.telegram_bot_channels ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Admin read all channels"
+    ON public.telegram_bot_channels
+    FOR SELECT
+    USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Admin update all channels"
+    ON public.telegram_bot_channels
+    FOR UPDATE
+    USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Admin insert channels"
+    ON public.telegram_bot_channels
+    FOR INSERT
+    WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Admin delete channels"
+    ON public.telegram_bot_channels
+    FOR DELETE
+    USING (auth.role() = 'authenticated');

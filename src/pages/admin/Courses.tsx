@@ -94,6 +94,7 @@ export default function AdminCourses() {
   const [courses, setCourses] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
+  const [botChannels, setBotChannels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
@@ -118,6 +119,7 @@ export default function AdminCourses() {
   const [thumbMode, setThumbMode] = useState<"url" | "upload">("url");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [manualChannelMode, setManualChannelMode] = useState(false);
 
   const [tagInput, setTagInput] = useState("");
   const [learnInput, setLearnInput] = useState("");
@@ -147,10 +149,14 @@ export default function AdminCourses() {
       
       const { data: rData, error: rError } = await (supabase as any).from("reviews").select("course_id, rating");
       if (rError) console.error("Error fetching reviews:", rError);
+
+      const { data: bData, error: bError } = await supabase.from("telegram_bot_channels").select("*").order("detected_at", { ascending: false });
+      if (bError) console.error("Error fetching bot channels:", bError);
       
       setCourses(cData || []);
       setPurchases(pData || []);
       setReviews(rData || []);
+      setBotChannels(bData || []);
     } catch (err) {
       console.error("Unexpected error:", err);
     } finally {
@@ -312,15 +318,32 @@ export default function AdminCourses() {
     });
 
     try {
+      let savedCourseId = editId;
       if (editId) {
         const { error } = await supabase.from("courses").update(payload as any).eq("id", editId);
         if (error) throw error;
         toast({ title: "Course updated successfully" });
       } else {
-        const { error } = await supabase.from("courses").insert(payload as any);
+        const { data, error } = await supabase.from("courses").insert(payload as any).select().single();
         if (error) throw error;
+        savedCourseId = data.id;
         toast({ title: "Course added successfully" });
       }
+
+      if (savedCourseId) {
+        // Free up any channel previously mapped to this course
+        await supabase.from("telegram_bot_channels")
+          .update({ assigned_to_course_id: null })
+          .eq("assigned_to_course_id", savedCourseId);
+          
+        // Map the new channel
+        if (payload.telegram_channel_id) {
+          await supabase.from("telegram_bot_channels")
+            .update({ assigned_to_course_id: savedCourseId })
+            .eq("channel_id", payload.telegram_channel_id);
+        }
+      }
+
       setFormOpen(false);
       fetchCourses();
     } catch (error: any) {
@@ -1022,8 +1045,32 @@ export default function AdminCourses() {
                 <Input value={form.telegram_link} onChange={e => setForm(f => ({ ...f, telegram_link: e.target.value }))} className="bg-[#0F172A] border-[#334155]" />
               </div>
               <div className="space-y-1.5">
-                <Label>Telegram Channel ID (Automated Access)</Label>
-                <Input value={form.telegram_channel_id} onChange={e => setForm(f => ({ ...f, telegram_channel_id: e.target.value }))} placeholder="-1001234567890" className="bg-[#0F172A] border-[#334155]" />
+                <div className="flex items-center justify-between">
+                  <Label>Telegram Channel ID (Automated Access)</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="manual-channel-mode" className="text-xs text-muted-foreground cursor-pointer">Manual ID Entry</Label>
+                    <Switch id="manual-channel-mode" checked={manualChannelMode} onCheckedChange={setManualChannelMode} />
+                  </div>
+                </div>
+                {manualChannelMode ? (
+                  <Input value={form.telegram_channel_id} onChange={e => setForm(f => ({ ...f, telegram_channel_id: e.target.value }))} placeholder="-1001234567890" className="bg-[#0F172A] border-[#334155]" />
+                ) : (
+                  <Select value={form.telegram_channel_id || ""} onValueChange={(val) => setForm(f => ({ ...f, telegram_channel_id: val === "none" ? "" : val }))}>
+                    <SelectTrigger className="bg-[#0F172A] border-[#334155]">
+                      <SelectValue placeholder="Select a detected channel..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Channel Assigned</SelectItem>
+                      {botChannels
+                        .filter(c => !c.assigned_to_course_id || c.assigned_to_course_id === editId || c.channel_id === form.telegram_channel_id)
+                        .map(c => (
+                        <SelectItem key={c.id} value={c.channel_id}>
+                          {c.channel_title} {c.assigned_to_course_id && c.assigned_to_course_id !== editId ? "(In Use)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 

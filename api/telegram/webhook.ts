@@ -36,6 +36,32 @@ export default async function handler(req: any, res: any) {
           .eq('link_used', false);
       }
     }
+
+    // Check if the bot itself was added to a new channel/group
+    if (update.my_chat_member) {
+      const myChatMember = update.my_chat_member;
+      const newStatus = myChatMember.new_chat_member?.status;
+      const chat = myChatMember.chat;
+
+      // When added as admin or member
+      if (newStatus === 'administrator' || newStatus === 'member') {
+        const channelId = chat.id.toString();
+        const channelTitle = chat.title || 'Unknown Channel';
+
+        // Upsert the channel info
+        const { error } = await supabase
+          .from('telegram_bot_channels')
+          .upsert({
+            channel_id: channelId,
+            channel_title: channelTitle,
+            detected_at: new Date().toISOString()
+          }, { onConflict: 'channel_id' });
+
+        if (error) {
+          console.error("Failed to insert/update telegram bot channel:", error);
+        }
+      }
+    }
   } catch (error) {
     console.error("Telegram webhook processing error:", error);
   }
