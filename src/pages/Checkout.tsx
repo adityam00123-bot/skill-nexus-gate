@@ -60,8 +60,9 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
           body: JSON.stringify({ user_id: user.id, course_id: course.id })
         });
         const data = await res.json();
-        
-        if (data.success && data.invite_link) {
+        if (data.success && data.already_joined) {
+          setJoined(true);
+        } else if (data.success && data.invite_link) {
           setInvite(data);
           expiryTime = new Date(data.expires_at).getTime();
           

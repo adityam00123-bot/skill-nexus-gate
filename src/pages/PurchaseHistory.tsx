@@ -30,24 +30,59 @@ const PurchaseHistory = () => {
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
-    supabase
-      .from("purchases")
-      .select(`
-        *,
-        courses (
-          title,
-          instructor_name,
-          thumbnail_url,
-          price,
-          telegram_link
-        )
-      `)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setPurchases((data as any[]) || []);
+    const fetchPurchases = async () => {
+      // Step 1: Get purchases
+      const { data: purchaseData, error: purchaseError } = await supabase
+        .from("purchases")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (purchaseError || !purchaseData) {
+        setPurchases([]);
         setLoading(false);
+        return;
+      }
+
+      const allPurchasedIds = purchaseData.map((r: any) => r.course_id);
+
+      // Separate real (UUID) IDs from dummy (slug) IDs
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const realIds = allPurchasedIds.filter(id => uuidRegex.test(id));
+
+      // Step 2: Fetch real course details from Supabase
+      let realCoursesMap: Record<string, any> = {};
+      if (realIds.length > 0) {
+        const { data: courseRows } = await supabase
+          .from("courses")
+          .select("id, title, instructor_name, thumbnail_url, price, telegram_link")
+          .in("id", realIds);
+
+        if (courseRows) {
+          courseRows.forEach((c: any) => {
+            realCoursesMap[c.id] = c;
+          });
+        }
+      }
+
+      // Step 3: Map course info to purchases
+      const enrichedPurchases = purchaseData.map((p: any) => {
+        let courseInfo = null;
+        if (uuidRegex.test(p.course_id)) {
+          courseInfo = realCoursesMap[p.course_id];
+        }
+        
+        return {
+          ...p,
+          courses: courseInfo || undefined
+        };
       });
+
+      setPurchases(enrichedPurchases);
+      setLoading(false);
+    };
+
+    fetchPurchases();
   }, [user]);
 
   if (authLoading || loading) {

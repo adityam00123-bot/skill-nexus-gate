@@ -32,12 +32,42 @@ export default async function handler(req: any, res: any) {
 
     const chatId = course.telegram_channel_id;
     
+    // 2. Check if user already has an invite or has joined
+    const { data: existingAccess } = await supabase
+      .from('telegram_access')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('course_id', course_id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+      
+    if (existingAccess && existingAccess.length > 0) {
+      const access = existingAccess[0];
+      if (access.link_used) {
+        return res.status(200).json({ 
+          success: true, 
+          telegram_channel_id: chatId,
+          already_joined: true
+        });
+      }
+      
+      // If it's not used and not expired, return it
+      if (new Date(access.expires_at).getTime() > Date.now()) {
+        return res.status(200).json({ 
+          success: true, 
+          telegram_channel_id: chatId,
+          invite_link: access.invite_link,
+          expires_at: access.expires_at
+        });
+      }
+    }
+
     // Calculate expiry (10 minutes from now, in seconds for Telegram API)
     const expiresInMs = 10 * 60 * 1000;
     const expireDateSeconds = Math.floor((Date.now() + expiresInMs) / 1000);
     const expiresAtIso = new Date(Date.now() + expiresInMs).toISOString();
 
-    // 2. Call Telegram API to generate a one-time invite link
+    // 3. Call Telegram API to generate a one-time invite link
     let inviteLink = null;
     try {
       const tgResponse = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createChatInviteLink`, {
@@ -64,7 +94,7 @@ export default async function handler(req: any, res: any) {
       console.error("Failed to call Telegram API:", tgApiError);
     }
 
-    // 3. Save to database if we got a link
+    // 4. Save to database if we got a link
     if (inviteLink) {
       const { error: insertError } = await supabase
         .from('telegram_access')
