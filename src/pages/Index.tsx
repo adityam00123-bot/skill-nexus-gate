@@ -7,10 +7,11 @@ import CategoryBar from "@/components/CategoryBar";
 import HeroSlider from "@/components/HeroSlider";
 import Footer from "@/components/Footer";
 import CourseCard from "@/components/CourseCard";
-import { courses, getFeaturedCourses, getCourseById, categories } from "@/data/courses";
+import { categories, type Course } from "@/data/courses";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePurchaseContext } from "@/contexts/PurchaseContext";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const SectionHeader = ({
   title,
@@ -42,32 +43,69 @@ const CourseScrollGrid = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
+// Map Supabase course row to the frontend Course type
+function mapDbCourse(row: any): Course {
+  return {
+    id: row.id,
+    title: row.title || "Untitled",
+    description: row.short_description || row.description || "",
+    longDescription: row.description || "",
+    price: Number(row.price) || 0,
+    originalPrice: Number(row.original_price) || Number(row.price) || 0,
+    category: Array.isArray(row.category) ? (row.category[0] || "Trading") : (row.category || "Trading"),
+    subcategory: Array.isArray(row.subcategory) ? (row.subcategory[0] || "") : (row.subcategory || ""),
+    instructor: row.instructor_name || "Unknown",
+    rating: Number(row.rating) || 0,
+    students: Number(row.total_students) || 0,
+    duration: row.duration_hours ? `${row.duration_hours}h` : "0h",
+    lessons: Number(row.total_lectures) || 0,
+    level: (row.level as Course["level"]) || "Beginner",
+    thumbnail: row.thumbnail_url || "/placeholder.svg",
+    tags: row.tags || [],
+    telegramLink: row.telegram_link || "",
+    featured: !!row.is_featured,
+  };
+}
+
 const Index = () => {
   const { user } = useAuth();
   const { purchasedIds } = usePurchaseContext();
+  const [dbCourses, setDbCourses] = useState<Course[]>([]);
 
-  // Continue Learning – purchased courses with mock progress
+  // Fetch real courses from Supabase
+  useEffect(() => {
+    const fetchCourses = async () => {
+      const { data } = await supabase
+        .from("courses")
+        .select("*")
+        .eq("is_published", true)
+        .or("is_deleted.eq.false,is_deleted.is.null");
+      if (data) setDbCourses(data.map(mapDbCourse));
+    };
+    fetchCourses();
+  }, []);
+
+  // Continue Learning – purchased courses from Supabase
   const purchasedCourses = useMemo(() => {
-    return Array.from(purchasedIds)
-      .map(getCourseById)
-      .filter(Boolean)
+    return dbCourses
+      .filter((c) => purchasedIds.has(c.id))
       .slice(0, 4);
-  }, [purchasedIds]);
+  }, [purchasedIds, dbCourses]);
 
-  // Latest courses – last 8 generated (newest)
-  const latestCourses = useMemo(() => [...courses].reverse().slice(0, 8), []);
+  // Latest courses – most recently created
+  const latestCourses = useMemo(() => [...dbCourses].reverse().slice(0, 8), [dbCourses]);
 
   // Top selling – sort by student count desc
   const topSelling = useMemo(
-    () => [...courses].sort((a, b) => b.students - a.students).slice(0, 8),
-    []
+    () => [...dbCourses].sort((a, b) => b.students - a.students).slice(0, 8),
+    [dbCourses]
   );
 
-  // Recommended – middle range courses (different from latest/top)
-  const recommended = useMemo(() => courses.slice(100, 108), []);
+  // Recommended – a different slice
+  const recommended = useMemo(() => dbCourses.slice(0, 8), [dbCourses]);
 
   // Featured
-  const featured = useMemo(() => getFeaturedCourses().slice(0, 8), []);
+  const featured = useMemo(() => dbCourses.filter((c) => c.featured).slice(0, 8), [dbCourses]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -129,6 +167,7 @@ const Index = () => {
       )}
 
       {/* SECTION 2 – Latest Courses */}
+      {latestCourses.length > 0 && (
       <section className="max-w-[1200px] mx-auto px-6 py-10">
         <SectionHeader
           title="Latest Courses"
@@ -142,8 +181,10 @@ const Index = () => {
           ))}
         </CourseScrollGrid>
       </section>
+      )}
 
       {/* SECTION 3 – Top Selling Courses */}
+      {topSelling.length > 0 && (
       <section className="max-w-[1200px] mx-auto px-6 py-10">
         <SectionHeader
           title="Top Selling Courses 🔥"
@@ -157,9 +198,10 @@ const Index = () => {
           ))}
         </CourseScrollGrid>
       </section>
+      )}
 
       {/* SECTION 4 – Recommended For You (logged in only) */}
-      {user && (
+      {user && recommended.length > 0 && (
         <section className="max-w-[1200px] mx-auto px-6 py-10">
           <SectionHeader
             title="Recommended For You"
@@ -176,6 +218,7 @@ const Index = () => {
       )}
 
       {/* SECTION 5 – Featured Courses */}
+      {featured.length > 0 && (
       <section className="max-w-[1200px] mx-auto px-6 py-10">
         <SectionHeader
           title="Featured Courses ⭐"
@@ -189,6 +232,7 @@ const Index = () => {
           ))}
         </CourseScrollGrid>
       </section>
+      )}
 
       {/* Explore by Category */}
       <section className="max-w-[1200px] mx-auto px-6 py-10">
@@ -204,7 +248,7 @@ const Index = () => {
           <LayoutGrid className="h-9 w-9 text-primary group-hover:scale-110 transition-transform duration-300 shrink-0" />
           <div>
             <span className="font-display font-semibold text-foreground text-lg">All Courses</span>
-            <span className="block text-sm text-muted-foreground">{courses.length}+ Courses</span>
+            <span className="block text-sm text-muted-foreground">Browse All Courses</span>
           </div>
           <ArrowRight className="ml-auto h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
         </Link>
@@ -218,7 +262,7 @@ const Index = () => {
             >
               <span className="text-4xl group-hover:scale-110 transition-transform duration-300">{cat.icon}</span>
               <span className="font-display font-semibold text-foreground">{cat.name}</span>
-              <span className="text-sm text-muted-foreground">{cat.count}+ Courses</span>
+              <span className="text-sm text-muted-foreground">Explore</span>
             </Link>
           ))}
         </div>

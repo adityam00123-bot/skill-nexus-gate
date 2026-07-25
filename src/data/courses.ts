@@ -145,23 +145,26 @@ function generateCourse(id: number, categoryId: string, subcategoryId: string, t
 export const courses: Course[] = [];
 let courseId = 0;
 
-// Distribute courses across every subcategory
-const COURSES_PER_SUB = 5; // 5 rounds per subcategory
-for (let round = 0; round < COURSES_PER_SUB; round++) {
-  for (const cat of categoryGroups) {
-    for (const sub of cat.subcategories) {
-      courses.push(generateCourse(courseId++, cat.id, sub.id, round));
-    }
-  }
-}
+// ──────────────────────────────────────────────────────────────
+// DUMMY COURSES DISABLED — Only real Supabase courses will show.
+// Un-comment the block below to re-enable ~2100 generated courses.
+// ──────────────────────────────────────────────────────────────
 
-// Fill up remaining to ~2100
-while (courses.length < 2100) {
-  const cat = categoryGroups[courseId % categoryGroups.length];
-  const sub = cat.subcategories[courseId % cat.subcategories.length];
-  const round = COURSES_PER_SUB + Math.floor((courseId - COURSES_PER_SUB * categoryGroups.length) / categoryGroups.length);
-  courses.push(generateCourse(courseId++, cat.id, sub.id, round));
-}
+// const COURSES_PER_SUB = 5;
+// for (let round = 0; round < COURSES_PER_SUB; round++) {
+//   for (const cat of categoryGroups) {
+//     for (const sub of cat.subcategories) {
+//       courses.push(generateCourse(courseId++, cat.id, sub.id, round));
+//     }
+//   }
+// }
+//
+// while (courses.length < 2100) {
+//   const cat = categoryGroups[courseId % categoryGroups.length];
+//   const sub = cat.subcategories[courseId % cat.subcategories.length];
+//   const round = COURSES_PER_SUB + Math.floor((courseId - COURSES_PER_SUB * categoryGroups.length) / categoryGroups.length);
+//   courses.push(generateCourse(courseId++, cat.id, sub.id, round));
+// }
 
 // Update category counts
 categories.forEach((c) => {

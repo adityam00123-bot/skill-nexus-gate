@@ -142,32 +142,29 @@ const MyLearning = () => {
 
     const fetchPurchasedCourses = async () => {
       setLoading(true);
-      const { data, error } = await supabase
+
+      // Step 1: Get all purchased course IDs for this user
+      const { data: purchaseRows, error } = await supabase
         .from("purchases")
-        .select(`
-          course_id,
-          courses (
-            id,
-            title,
-            description,
-            short_description,
-            instructor_name,
-            thumbnail_url,
-            price,
-            original_price,
-            category,
-            duration_hours,
-            total_lectures,
-            level,
-            telegram_link
-          )
-        `)
+        .select("course_id")
         .eq("user_id", user.id);
 
-      const dbFetchedCourses = (data || []).map((p: any) => {
-        const c = p.courses;
-        if (!c) return null;
-        return {
+      const allPurchasedIds = (purchaseRows || []).map((r: any) => r.course_id);
+
+      // Separate real (UUID) IDs from dummy (slug) IDs
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const realIds = allPurchasedIds.filter(id => uuidRegex.test(id));
+      const dummyIds = allPurchasedIds.filter(id => !uuidRegex.test(id));
+
+      // Step 2: Fetch real course details from Supabase
+      let dbFetchedCourses: Course[] = [];
+      if (realIds.length > 0) {
+        const { data: courseRows } = await supabase
+          .from("courses")
+          .select("id, title, description, short_description, instructor_name, thumbnail_url, price, original_price, category, duration_hours, total_lectures, level, telegram_link")
+          .in("id", realIds);
+
+        dbFetchedCourses = (courseRows || []).map((c: any) => ({
           id: c.id,
           title: c.title,
           instructor: c.instructor_name || "Unknown Instructor",
@@ -175,19 +172,24 @@ const MyLearning = () => {
           price: Number(c.price) || 0,
           originalPrice: Number(c.original_price) || Number(c.price) || 0,
           category: c.category || "Trading",
+          subcategory: "",
           duration: c.duration_hours ? `${c.duration_hours}h` : "0h",
           lessons: Number(c.total_lectures) || 0,
           level: c.level || "Beginner",
           description: c.short_description || c.description || "",
           longDescription: c.description || "",
-          telegramLink: c.telegram_link,
-        } as Course;
-      }).filter(Boolean) as Course[];
+          rating: 0,
+          students: 0,
+          tags: [],
+          telegramLink: c.telegram_link || "",
+        } as Course));
+      }
 
-      // Handle dummy courses from context (slug-based IDs)
+      // Step 3: Look up dummy courses from local data + context
       const dbCourseIds = new Set(dbFetchedCourses.map(c => c.id));
-      const dummyPurchased = Array.from(purchasedIds)
-        .filter(id => !dbCourseIds.has(id))
+      const contextOnlyIds = Array.from(purchasedIds).filter(id => !dbCourseIds.has(id) && !dummyIds.includes(id));
+      const allDummyIds = [...dummyIds, ...contextOnlyIds];
+      const dummyPurchased = allDummyIds
         .map(getCourseById)
         .filter(Boolean) as Course[];
       

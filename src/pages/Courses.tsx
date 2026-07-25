@@ -15,6 +15,10 @@ import { categories, courses as staticCourses, type Course } from "@/data/course
 import { categoryGroups } from "@/data/categoryData";
 import { supabase } from "@/integrations/supabase/client";
 
+// Helper to check if a string is a UUID (i.e. a real Supabase course, not a dummy)
+const isUUID = (str: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+
 const ITEMS_PER_PAGE = 20;
 const LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
 const RATING_OPTIONS = [4.5, 4.0, 3.5, 3.0] as const;
@@ -60,10 +64,11 @@ const Courses = () => {
 
   useEffect(() => {
     const fetchPublished = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("courses")
         .select("*")
-        .eq("is_published", true);
+        .eq("is_published", true)
+        .or("is_deleted.eq.false,is_deleted.is.null");
       if (data) setDbCourses(data.map(mapDbCourse));
     };
     fetchPublished();
@@ -132,14 +137,15 @@ const Courses = () => {
       );
     }
 
-    // Category filter
+    // Category filter — match against both slug IDs (dummy) and display names (DB)
     if (category !== "all") {
       const catGroup = categoryGroups.find(g => g.id === category);
       if (catGroup) {
+        const catId = catGroup.id.toLowerCase();
         const catName = catGroup.name.toLowerCase();
         results = results.filter(c => {
-          const cat = Array.isArray(c.category) ? (c.category[0] || "") : (c.category || "");
-          return cat.toLowerCase().includes(catName) || catGroup.subcategories.some(s => c.subcategory === s.id || c.subcategory === s.name);
+          const cat = (Array.isArray(c.category) ? (c.category[0] || "") : (c.category || "")).toLowerCase();
+          return cat === catId || cat === catName || cat.includes(catName) || catName.includes(cat) || catGroup.subcategories.some(s => c.subcategory === s.id || c.subcategory === s.name);
         });
       }
     }
@@ -160,10 +166,16 @@ const Courses = () => {
       results = results.filter((c) => c.rating >= minRating);
     }
 
-    if (sortBy === "price-low") results.sort((a, b) => a.price - b.price);
-    else if (sortBy === "price-high") results.sort((a, b) => b.price - a.price);
-    else if (sortBy === "rating") results.sort((a, b) => b.rating - a.rating);
-    else results.sort((a, b) => b.students - a.students);
+    // Always show real (Supabase) courses first, then apply chosen sort within each group
+    const realFirst = (a: Course, b: Course) => {
+      const aReal = isUUID(a.id) ? 1 : 0;
+      const bReal = isUUID(b.id) ? 1 : 0;
+      return bReal - aReal;
+    };
+    if (sortBy === "price-low") results.sort((a, b) => realFirst(a, b) || a.price - b.price);
+    else if (sortBy === "price-high") results.sort((a, b) => realFirst(a, b) || b.price - a.price);
+    else if (sortBy === "rating") results.sort((a, b) => realFirst(a, b) || b.rating - a.rating);
+    else results.sort((a, b) => realFirst(a, b) || b.students - a.students);
 
     return results;
   }, [query, category, subcategory, sortBy, priceRange, selectedLevels, minRating, allCourses, activeSubObj]);

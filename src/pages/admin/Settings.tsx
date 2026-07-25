@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   site_name: "CourseVerse",
   site_description: "Premium trading & investing courses",
   maintenance_mode: "false",
-  support_email: "support@courseverse.in",
+  support_email: "courseversehere@gmail.com",
   telegram_support: "",
   telegram_bot: "",
   monthly_price: "499",

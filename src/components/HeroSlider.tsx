@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 const slides = [
   {
     title: "Welcome to CourseVerse",
-    subtitle: "Explore 2000+ Courses",
+    subtitle: "Explore Our Courses",
     description: "Master trading, investing, and business with expert-led courses.",
     cta: "Explore Courses",
     ctaLink: "/courses",

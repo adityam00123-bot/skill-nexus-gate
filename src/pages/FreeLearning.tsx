@@ -154,7 +154,7 @@ const FreeLearning = () => {
         {/* CTA Section */}
         <section className="bg-primary/10 border border-primary/20 rounded-2xl p-8 md:p-12 text-center space-y-4">
           <Crown className="h-10 w-10 text-primary mx-auto" />
-          <h2 className="font-display font-bold text-2xl md:text-3xl text-foreground">Unlock 2000+ premium courses with CourseVerse Premium</h2>
+          <h2 className="font-display font-bold text-2xl md:text-3xl text-foreground">Unlock premium courses with CourseVerse Premium</h2>
           <p className="text-muted-foreground max-w-xl mx-auto">Get unlimited access to expert-led courses, tools, and exclusive content.</p>
           <Button size="lg" className="font-semibold gap-2" onClick={() => navigate("/subscribe")}>
             Explore Premium <ArrowRight className="h-4 w-4" />

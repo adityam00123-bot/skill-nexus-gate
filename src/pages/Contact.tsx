@@ -93,7 +93,7 @@ const Contact = () => {
               <CardContent className="p-5 text-center">
                 <Mail className="h-6 w-6 text-primary mx-auto mb-2" />
                 <p className="text-sm font-medium text-foreground">Email Us</p>
-                <p className="text-xs text-muted-foreground">support@courseverse.com</p>
+                <p className="text-xs text-muted-foreground">courseversehere@gmail.com</p>
               </CardContent>
             </Card>
             <Card className="border-border">

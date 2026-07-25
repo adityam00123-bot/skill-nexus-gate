@@ -90,10 +90,10 @@ const TermsAndConditions = () => {
                 <li>
                   You must immediately notify us at{" "}
                   <a
-                    href="mailto:tradezone1104@gmail.com"
+                    href="mailto:courseversehere@gmail.com"
                     className="text-primary hover:underline"
                   >
-                    tradezone1104@gmail.com
+                    courseversehere@gmail.com
                   </a>{" "}
                   of any unauthorized use of your account.
                 </li>
@@ -316,10 +316,10 @@ const TermsAndConditions = () => {
                 <p className="text-muted-foreground text-sm">
                   Email:{" "}
                   <a
-                    href="mailto:tradezone1104@gmail.com"
+                    href="mailto:courseversehere@gmail.com"
                     className="text-primary hover:underline"
                   >
-                    tradezone1104@gmail.com
+                    courseversehere@gmail.com
                   </a>
                 </p>
                 <p className="text-muted-foreground text-sm">

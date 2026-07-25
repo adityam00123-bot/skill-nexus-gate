@@ -31,18 +31,18 @@ const Footer = () => (
         <div>
           <h4 className="font-display font-semibold text-foreground mb-3">Company</h4>
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <Link to="/about" className="hover:text-primary transition-colors">About CourseVerse</Link>
             <Link to="/contact" className="hover:text-primary transition-colors">Contact Us</Link>
             <Link to="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link>
             <Link to="/terms" className="hover:text-primary transition-colors">Terms and Conditions</Link>
             <Link to="/refund-policy" className="hover:text-primary transition-colors">Refund Policy</Link>
+            <Link to="/wallet-terms" className="hover:text-primary transition-colors">Wallet Terms</Link>
           </div>
         </div>
         <div>
           <h4 className="font-display font-semibold text-foreground mb-3">Support</h4>
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <Link to="/support" className="hover:text-primary transition-colors">Help & Support</Link>
-            <Link to="/support" className="hover:text-primary transition-colors">FAQ</Link>
+            <Link to="/help" className="hover:text-primary transition-colors">Help & Support</Link>
+            <Link to="/help" className="hover:text-primary transition-colors">FAQ</Link>
             <Link to="/refund-policy" className="hover:text-primary transition-colors">Refund Policy</Link>
           </div>
         </div>

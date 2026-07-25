@@ -22,7 +22,7 @@ const RefundPolicy = () => {
             policy carefully.
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Last Updated: March 2026
+            Last Updated: July 2026
           </p>
         </div>
       </section>
@@ -49,7 +49,7 @@ const RefundPolicy = () => {
                   Email to Request
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  tradezone1104@gmail.com with order details
+                  courseversehere@gmail.com with order details
                 </p>
               </CardContent>
             </Card>
@@ -57,10 +57,10 @@ const RefundPolicy = () => {
               <CardContent className="p-5 text-center">
                 <RotateCcw className="h-6 w-6 text-primary mx-auto mb-2" />
                 <p className="text-sm font-medium text-foreground">
-                  5–7 Business Days
+                  Wallet Credit
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Refund processed to original payment method
+                  Refunds credited to your CourseVerse Wallet
                 </p>
               </CardContent>
             </Card>
@@ -273,21 +273,31 @@ const RefundPolicy = () => {
                 5. Refund Processing Time
               </h2>
               <p className="text-muted-foreground leading-relaxed">
-                Once a refund is approved, it will be processed to the original
-                payment method used at the time of purchase. Please allow{" "}
+                Once a refund is approved, it will be credited to your{" "}
                 <span className="text-foreground font-medium">
-                  5–7 business days
+                  CourseVerse Wallet
+                </span>
+                . Refunds are{" "}
+                <span className="text-foreground font-medium">
+                  never issued to the original payment method, bank account, or UPI ID
+                </span>
+                . Your wallet balance can be used to purchase any course on CourseVerse.
+                Please allow{" "}
+                <span className="text-foreground font-medium">
+                  1–2 business days
                 </span>{" "}
-                for the refunded amount to reflect in your account. Processing
-                times may vary depending on your bank or payment provider.
-                CourseVerse is not responsible for delays caused by your bank or
-                the payment gateway.
+                for the refund to be credited to your wallet after approval.
               </p>
               <p className="text-muted-foreground leading-relaxed mt-3">
-                Refunds are processed through Cashfree Payments. If you
-                experience any issues with receiving your refund, please contact
-                us and we will assist you in following up with the payment
-                processor.
+                For details on wallet balance usage and restrictions, please refer
+                to our{" "}
+                <a
+                  href="/wallet-terms"
+                  className="text-primary hover:underline"
+                >
+                  Wallet Terms
+                </a>
+                .
               </p>
             </div>
 
@@ -308,10 +318,10 @@ const RefundPolicy = () => {
                 <p className="text-muted-foreground text-sm">
                   Email:{" "}
                   <a
-                    href="mailto:tradezone1104@gmail.com"
+                    href="mailto:courseversehere@gmail.com"
                     className="text-primary hover:underline"
                   >
-                    tradezone1104@gmail.com
+                    courseversehere@gmail.com
                   </a>
                 </p>
                 <p className="text-muted-foreground text-sm">
