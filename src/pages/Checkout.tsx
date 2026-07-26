@@ -141,13 +141,20 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
             Verified: joined as {tgIdentity.username ? `@${tgIdentity.username}` : 'user'} (ID: {tgIdentity.id})
           </p>
         )}
-        {persistentLink && (
-          <a href={persistentLink} target="_blank" rel="noopener noreferrer" className="block">
-            <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold">
-              <MessageCircle className="mr-2 h-4 w-4" /> View Course
+        <div className="flex gap-2 mt-2">
+          {persistentLink && (
+            <a href={persistentLink} target="_blank" rel="noopener noreferrer" className="block flex-1">
+              <Button size="sm" variant="outline" className="w-full font-semibold border-[#0088cc] text-[#0088cc] hover:bg-[#0088cc]/10">
+                <MessageCircle className="mr-2 h-4 w-4" /> Open Telegram
+              </Button>
+            </a>
+          )}
+          <Link to={`/course/${course.id}`} className="block flex-1">
+            <Button size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold">
+              Start Learning
             </Button>
-          </a>
-        )}
+          </Link>
+        </div>
       </div>
     );
   }
@@ -308,9 +315,9 @@ const Checkout = () => {
             </div>
 
             <div className="pt-4 border-t border-border">
-              <Link to="/purchase-history" className="block">
-                <Button size="lg" variant="outline" className="w-full font-semibold">
-                  View Purchase History
+              <Link to="/" className="block">
+                <Button size="lg" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-base">
+                  Go to Homepage
                 </Button>
               </Link>
             </div>
