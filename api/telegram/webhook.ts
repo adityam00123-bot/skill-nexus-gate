@@ -20,16 +20,37 @@ export default async function handler(req: any, res: any) {
       try {
         update = JSON.parse(update);
         console.log(`[webhook] STEP 1 - Parsed string body to object`);
-      } catch (e) {
-        console.error(`[webhook] STEP 1 - Failed to parse string body:`, e);
+      } catch (e: any) {
+        console.error(`[webhook] STEP 1 - Failed to parse string body: ${e?.message}`);
         return res.status(200).json({ status: "ok" });
       }
     }
     
-    const topLevelKeys = Object.keys(update || {});
-    console.log(`[webhook] STEP 2 - Top-level keys: [${topLevelKeys.join(', ')}]`);
-    console.log(`[webhook] STEP 2 - RAW UPDATE:`, JSON.stringify(update));
-    console.log(`[webhook] STEP 3 - update.chat_member exists: ${!!update.chat_member}, type: ${typeof update.chat_member}`);
+    try {
+      const topLevelKeys = Object.keys(update || {});
+      console.log(`[webhook] STEP 2 - Top-level keys: [${topLevelKeys.join(', ')}]`);
+    } catch (e: any) {
+      console.error(`[webhook] STEP 2 Error getting keys: ${e?.message}`);
+    }
+
+    try {
+      // Safe stringify in case of circular structure
+      const getCircularReplacer = () => {
+        const seen = new WeakSet();
+        return (key: string, value: any) => {
+          if (typeof value === "object" && value !== null) {
+            if (seen.has(value)) return "[Circular]";
+            seen.add(value);
+          }
+          return value;
+        };
+      };
+      console.log(`[webhook] STEP 2b - RAW UPDATE: ${JSON.stringify(update, getCircularReplacer())}`);
+    } catch (e: any) {
+      console.error(`[webhook] STEP 2b Error stringifying update: ${e?.message}`);
+    }
+
+    console.log(`[webhook] STEP 3 - update.chat_member exists: ${!!update?.chat_member}, type: ${typeof update?.chat_member}`);
     
     // Check if this is a chat_member update where someone joined
     if (update.chat_member) {
@@ -163,8 +184,8 @@ export default async function handler(req: any, res: any) {
         });
       }
     }
-  } catch (error) {
-    console.error("Telegram webhook processing error:", error);
+  } catch (error: any) {
+    console.error(`Telegram webhook processing error: ${error?.message || 'Unknown error'}`, error?.stack);
   }
 
   // Always return 200 OK to Telegram to prevent retries
