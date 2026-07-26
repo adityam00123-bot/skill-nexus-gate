@@ -60,6 +60,24 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- ---------- telegram_access ----------
+CREATE TABLE IF NOT EXISTS public.telegram_access (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  user_id uuid,
+  course_id uuid,
+  invite_link text,
+  telegram_channel_id text,
+  link_used boolean DEFAULT false,
+  expires_at timestamp with time zone,
+  joined_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  joined_telegram_user_id bigint,
+  joined_telegram_username text,
+  PRIMARY KEY (id)
+);
+
+ALTER TABLE public.telegram_access ENABLE ROW LEVEL SECURITY;
+
 -- ---------- wallet_transactions ----------
 CREATE TABLE IF NOT EXISTS public.wallet_transactions (
   id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),

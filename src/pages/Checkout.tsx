@@ -29,6 +29,8 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
   const [invite, setInvite] = useState<any>(null);
   const [joined, setJoined] = useState(false);
   const [persistentLink, setPersistentLink] = useState<string | null>(null);
+  const [tgIdentity, setTgIdentity] = useState<{username: string | null, id: number | null} | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const hasFetched = useRef(false);
 
   // if dummy course with static link, just show it
@@ -74,12 +76,16 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
             // Poll Supabase for join status
             const { data: access } = await supabase
               .from('telegram_access')
-              .select('link_used')
+              .select('link_used, joined_telegram_user_id, joined_telegram_username')
               .eq('invite_link', data.invite_link)
               .maybeSingle();
               
             if (access?.link_used) {
               setJoined(true);
+              setTgIdentity({
+                id: access.joined_telegram_user_id,
+                username: access.joined_telegram_username
+              });
               clearInterval(pollInterval);
             }
           }, 3000);
@@ -98,12 +104,43 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
     };
   }, [course.id, user.id]);
 
+  const handleVerify = async () => {
+    setVerifying(true);
+    try {
+      const res = await fetch('/api/telegram/verify-join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id, course_id: course.id })
+      });
+      const data = await res.json();
+      if (data.success && data.joined) {
+        setJoined(true);
+        setTgIdentity({
+          username: data.telegram_username,
+          id: data.telegram_user_id
+        });
+        toast.success("Join verified successfully!");
+      } else {
+        toast.error("No join detected yet — please join first, then click Verify.");
+      }
+    } catch (err) {
+      toast.error("Verification failed, please try again.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   if (joined) {
     return (
       <div className="mt-3 space-y-2 text-center p-3 bg-green-500/10 rounded-lg border border-green-500/20">
         <p className="text-green-500 text-sm font-semibold flex items-center justify-center gap-2">
           <CheckCircle className="h-4 w-4" /> Joined successfully!
         </p>
+        {tgIdentity?.id && (
+          <p className="text-xs text-muted-foreground mb-2">
+            Verified: joined as {tgIdentity.username ? `@${tgIdentity.username}` : 'user'} (ID: {tgIdentity.id})
+          </p>
+        )}
         {persistentLink && (
           <a href={persistentLink} target="_blank" rel="noopener noreferrer" className="block">
             <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold">
@@ -124,14 +161,25 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
       <div className="mt-3 space-y-3">
         <div className="p-3 bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/20 rounded-lg text-sm text-center">
           <p className="text-[hsl(var(--warning))] font-medium flex items-center justify-center gap-1.5">
-            <span className="text-lg">⚠️</span> This is a one-time invite link tied to your account. Do not share it. If shared, whoever clicks it first will get access, and it cannot be regenerated.
+            <span className="text-lg">⚠️</span> Join Now — Do NOT share this link with anyone. Once someone joins using this link, it cannot be reassigned or changed to a different Telegram account. If you accidentally shared it and someone else joined, contact support for help.
           </p>
         </div>
-        <a href={invite.invite_link} target="_blank" rel="noopener noreferrer" className="block">
-          <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold">
-            <MessageCircle className="mr-2 h-4 w-4" /> Join Telegram Channel
+        <div className="flex gap-2">
+          <a href={invite.invite_link} target="_blank" rel="noopener noreferrer" className="block flex-1">
+            <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold">
+              <MessageCircle className="mr-2 h-4 w-4" /> Join Telegram Channel
+            </Button>
+          </a>
+          <Button 
+            size="sm" 
+            variant="outline"
+            className="shrink-0"
+            onClick={handleVerify}
+            disabled={verifying}
+          >
+            {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify Join"}
           </Button>
-        </a>
+        </div>
       </div>
     );
   }

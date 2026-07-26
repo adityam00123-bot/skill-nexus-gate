@@ -24,13 +24,18 @@ export default async function handler(req: any, res: any) {
       // Ensure they actually joined and it used an invite link
       if (inviteLinkObj && inviteLinkObj.invite_link && newStatus === 'member') {
         const link = inviteLinkObj.invite_link;
+        const tgUser = chatMember.new_chat_member?.user;
+        const tgUserId = tgUser?.id;
+        const tgUsername = tgUser?.username || tgUser?.first_name || 'Unknown';
 
         // Mark the link as used in the database
         await supabase
           .from('telegram_access')
           .update({ 
             link_used: true,
-            joined_at: new Date().toISOString()
+            joined_at: new Date().toISOString(),
+            joined_telegram_user_id: tgUserId,
+            joined_telegram_username: tgUsername
           })
           .eq('invite_link', link)
           .eq('link_used', false);
