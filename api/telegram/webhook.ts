@@ -11,12 +11,25 @@ export default async function handler(req: any, res: any) {
   }
 
   // Telegram expects a fast 200 response
-  // We'll process asynchronously or quickly
   try {
-    const update = req.body;
+    // === STEP 1: Parse body (handle string vs object) ===
+    let update = req.body;
+    console.log(`[webhook] STEP 1 - typeof req.body: ${typeof update}`);
     
-    // === DIAGNOSTIC: Log EVERY incoming webhook update ===
-    console.log(`[webhook] RAW UPDATE RECEIVED:`, JSON.stringify(update));
+    if (typeof update === 'string') {
+      try {
+        update = JSON.parse(update);
+        console.log(`[webhook] STEP 1 - Parsed string body to object`);
+      } catch (e) {
+        console.error(`[webhook] STEP 1 - Failed to parse string body:`, e);
+        return res.status(200).json({ status: "ok" });
+      }
+    }
+    
+    const topLevelKeys = Object.keys(update || {});
+    console.log(`[webhook] STEP 2 - Top-level keys: [${topLevelKeys.join(', ')}]`);
+    console.log(`[webhook] STEP 2 - RAW UPDATE:`, JSON.stringify(update));
+    console.log(`[webhook] STEP 3 - update.chat_member exists: ${!!update.chat_member}, type: ${typeof update.chat_member}`);
     
     // Check if this is a chat_member update where someone joined
     if (update.chat_member) {
@@ -25,8 +38,8 @@ export default async function handler(req: any, res: any) {
       const oldStatus = chatMember.old_chat_member?.status;
       const newStatus = chatMember.new_chat_member?.status;
 
-      console.log(`[webhook] chat_member event: oldStatus=${oldStatus}, newStatus=${newStatus}`);
-      console.log(`[webhook] invite_link object:`, JSON.stringify(inviteLinkObj));
+      console.log(`[webhook] STEP 4 - chat_member branch ENTERED: oldStatus=${oldStatus}, newStatus=${newStatus}`);
+      console.log(`[webhook] STEP 4 - invite_link object:`, JSON.stringify(inviteLinkObj));
 
       // Ensure they actually joined and it used an invite link
       if (inviteLinkObj && inviteLinkObj.invite_link && (newStatus === 'member' || newStatus === 'administrator')) {
@@ -35,7 +48,7 @@ export default async function handler(req: any, res: any) {
         const tgUserId = tgUser?.id;
         const tgUsername = tgUser?.username || tgUser?.first_name || 'Unknown';
 
-        console.log(`[webhook] Attempting DB update: invite_link="${link}", tgUserId=${tgUserId}, tgUsername="${tgUsername}"`);
+        console.log(`[webhook] STEP 5 - Attempting DB update: invite_link="${link}", tgUserId=${tgUserId}, tgUsername="${tgUsername}"`);
 
         // Mark the link as used in the database
         const { data: updateData, error: updateError, count } = await supabase
@@ -50,7 +63,7 @@ export default async function handler(req: any, res: any) {
           .eq('link_used', false)
           .select();
 
-        console.log(`[webhook] DB update result: matched=${count}, data=${JSON.stringify(updateData)}, error=${JSON.stringify(updateError)}`);
+        console.log(`[webhook] STEP 6 - DB update result: matched=${count}, data=${JSON.stringify(updateData)}, error=${JSON.stringify(updateError)}`);
 
         // If no match found, try a broader search to diagnose
         if (!updateData || updateData.length === 0) {
@@ -59,11 +72,13 @@ export default async function handler(req: any, res: any) {
             .select('invite_link, link_used')
             .order('created_at', { ascending: false })
             .limit(5);
-          console.log(`[webhook] DEBUG: Last 5 telegram_access rows:`, JSON.stringify(allRows));
+          console.log(`[webhook] STEP 7 - DEBUG Last 5 telegram_access rows:`, JSON.stringify(allRows));
         }
       } else {
-        console.log(`[webhook] chat_member event SKIPPED: inviteLinkObj=${!!inviteLinkObj}, newStatus=${newStatus}`);
+        console.log(`[webhook] STEP 4b - chat_member SKIPPED inner condition: inviteLinkObj=${!!inviteLinkObj}, inviteLinkObj.invite_link=${inviteLinkObj?.invite_link}, newStatus=${newStatus}`);
       }
+    } else {
+      console.log(`[webhook] STEP 3b - chat_member branch NOT entered. Checking other update types...`);
     }
 
     // Check if the bot itself was added to a new channel/group
