@@ -28,7 +28,6 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
   const [loading, setLoading] = useState(true);
   const [invite, setInvite] = useState<any>(null);
   const [joined, setJoined] = useState(false);
-  const [timeLeft, setTimeLeft] = useState<string>("");
   const [persistentLink, setPersistentLink] = useState<string | null>(null);
   const hasFetched = useRef(false);
 
@@ -70,29 +69,8 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
           if (data.persistent_access_link) setPersistentLink(data.persistent_access_link);
         } else if (data.success && data.invite_link) {
           setInvite(data);
-          const expiryTime = new Date(data.expires_at).getTime();
 
-          // Set countdown immediately (don't wait for first interval tick)
-          const initDistance = expiryTime - Date.now();
-          if (initDistance < 0) {
-            setTimeLeft("Expired");
-          } else {
-            const m = Math.floor((initDistance % (1000 * 60 * 60)) / (1000 * 60));
-            const s = Math.floor((initDistance % (1000 * 60)) / 1000);
-            setTimeLeft(`${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
-          }
-          
           pollInterval = setInterval(async () => {
-            const now = Date.now();
-            const distance = expiryTime - now;
-            if (distance < 0) {
-              setTimeLeft("Expired");
-            } else {
-              const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-              const s = Math.floor((distance % (1000 * 60)) / 1000);
-              setTimeLeft(`${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
-            }
-
             // Poll Supabase for join status
             const { data: access } = await supabase
               .from('telegram_access')
@@ -141,24 +119,19 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
     return <div className="mt-3 flex justify-center py-2"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   }
 
-  if (invite?.invite_link) {
+  if (invite) {
     return (
       <div className="mt-3 space-y-3">
-        <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-lg text-left">
-          <p className="text-xs text-amber-600 dark:text-amber-500 font-medium leading-relaxed">
-            ⚠️ This is a one-time invite link tied to your account. Do not share it. If shared, whoever clicks it first will get access, and it cannot be regenerated.
+        <div className="p-3 bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/20 rounded-lg text-sm text-center">
+          <p className="text-[hsl(var(--warning))] font-medium flex items-center justify-center gap-1.5">
+            <span className="text-lg">⚠️</span> This is a one-time invite link tied to your account. Do not share it. If shared, whoever clicks it first will get access, and it cannot be regenerated.
           </p>
         </div>
         <a href={invite.invite_link} target="_blank" rel="noopener noreferrer" className="block">
-          <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold shadow-md">
+          <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold">
             <MessageCircle className="mr-2 h-4 w-4" /> Join Telegram Channel
           </Button>
         </a>
-        {timeLeft !== "Expired" ? (
-          <p className="text-xs text-center font-medium text-[hsl(var(--warning))] animate-pulse">Link expires in {timeLeft}</p>
-        ) : (
-          <p className="text-xs text-center text-destructive">Link expired</p>
-        )}
       </div>
     );
   }

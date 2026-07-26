@@ -97,17 +97,21 @@ export default async function handler(req: any, res: any) {
 
     let inviteLink = null;
     try {
+      const tgPayload = {
+        chat_id: chatId,
+        member_limit: 1,
+        expire_date: expireDateSeconds,
+      };
+      console.log(`[generate-invite] Sending request to Telegram createChatInviteLink:`, JSON.stringify(tgPayload));
+
       const tgResponse = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createChatInviteLink`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          member_limit: 1,
-          expire_date: expireDateSeconds,
-        }),
+        body: JSON.stringify(tgPayload),
       });
 
       const tgData = await tgResponse.json();
+      console.log(`[generate-invite] Received response from Telegram:`, JSON.stringify(tgData));
       
       if (tgData.ok && tgData.result && tgData.result.invite_link) {
         inviteLink = tgData.result.invite_link;
