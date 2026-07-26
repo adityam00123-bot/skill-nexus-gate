@@ -630,13 +630,13 @@ const CourseDetail = () => {
                       {persistentAccessLink ? (
                         <a href={persistentAccessLink} target="_blank" rel="noopener noreferrer">
                           <Button size="lg" className="w-full bg-[#0088cc] text-white hover:bg-[#0088cc]/90 font-semibold">
-                            <MessageCircle className="mr-2 h-5 w-5" /> Open Telegram Channel
+                            <MessageCircle className="mr-2 h-5 w-5" /> View Course
                           </Button>
                         </a>
                       ) : course.telegram_link && (
                         <a href={course.telegram_link} target="_blank" rel="noopener noreferrer">
                           <Button size="lg" className="w-full bg-info text-foreground hover:bg-info/90 font-semibold">
-                            <MessageCircle className="mr-2 h-5 w-5" /> Join Telegram Channel
+                            <MessageCircle className="mr-2 h-5 w-5" /> View Course
                           </Button>
                         </a>
                       )}
