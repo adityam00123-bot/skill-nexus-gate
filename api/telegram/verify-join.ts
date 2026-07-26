@@ -17,7 +17,9 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const { data: access } = await supabase
+    console.log(`[verify-join] Checking: user_id=${user_id}, course_id=${course_id}`);
+
+    const { data: access, error: queryError } = await supabase
       .from('telegram_access')
       .select('*')
       .eq('user_id', user_id)
@@ -25,6 +27,8 @@ export default async function handler(req: any, res: any) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    console.log(`[verify-join] Query result: access=${JSON.stringify(access)}, error=${JSON.stringify(queryError)}`);
 
     if (access && access.link_used) {
       return res.status(200).json({ 

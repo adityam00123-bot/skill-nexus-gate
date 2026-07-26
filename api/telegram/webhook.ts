@@ -15,21 +15,30 @@ export default async function handler(req: any, res: any) {
   try {
     const update = req.body;
     
+    // === DIAGNOSTIC: Log EVERY incoming webhook update ===
+    console.log(`[webhook] RAW UPDATE RECEIVED:`, JSON.stringify(update));
+    
     // Check if this is a chat_member update where someone joined
     if (update.chat_member) {
       const chatMember = update.chat_member;
       const inviteLinkObj = chatMember.invite_link;
+      const oldStatus = chatMember.old_chat_member?.status;
       const newStatus = chatMember.new_chat_member?.status;
 
+      console.log(`[webhook] chat_member event: oldStatus=${oldStatus}, newStatus=${newStatus}`);
+      console.log(`[webhook] invite_link object:`, JSON.stringify(inviteLinkObj));
+
       // Ensure they actually joined and it used an invite link
-      if (inviteLinkObj && inviteLinkObj.invite_link && newStatus === 'member') {
+      if (inviteLinkObj && inviteLinkObj.invite_link && (newStatus === 'member' || newStatus === 'administrator')) {
         const link = inviteLinkObj.invite_link;
         const tgUser = chatMember.new_chat_member?.user;
         const tgUserId = tgUser?.id;
         const tgUsername = tgUser?.username || tgUser?.first_name || 'Unknown';
 
+        console.log(`[webhook] Attempting DB update: invite_link="${link}", tgUserId=${tgUserId}, tgUsername="${tgUsername}"`);
+
         // Mark the link as used in the database
-        await supabase
+        const { data: updateData, error: updateError, count } = await supabase
           .from('telegram_access')
           .update({ 
             link_used: true,
@@ -38,7 +47,22 @@ export default async function handler(req: any, res: any) {
             joined_telegram_username: tgUsername
           })
           .eq('invite_link', link)
-          .eq('link_used', false);
+          .eq('link_used', false)
+          .select();
+
+        console.log(`[webhook] DB update result: matched=${count}, data=${JSON.stringify(updateData)}, error=${JSON.stringify(updateError)}`);
+
+        // If no match found, try a broader search to diagnose
+        if (!updateData || updateData.length === 0) {
+          const { data: allRows } = await supabase
+            .from('telegram_access')
+            .select('invite_link, link_used')
+            .order('created_at', { ascending: false })
+            .limit(5);
+          console.log(`[webhook] DEBUG: Last 5 telegram_access rows:`, JSON.stringify(allRows));
+        }
+      } else {
+        console.log(`[webhook] chat_member event SKIPPED: inviteLinkObj=${!!inviteLinkObj}, newStatus=${newStatus}`);
       }
     }
 

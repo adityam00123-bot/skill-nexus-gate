@@ -161,7 +161,7 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
       <div className="mt-3 space-y-3">
         <div className="p-3 bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/20 rounded-lg text-sm text-center">
           <p className="text-[hsl(var(--warning))] font-medium flex items-center justify-center gap-1.5">
-            <span className="text-lg">⚠️</span> Join Now — Do NOT share this link with anyone. Once someone joins using this link, it cannot be reassigned or changed to a different Telegram account. If you accidentally shared it and someone else joined, contact support for help.
+            <span className="text-lg">⚠️</span> Join Now — Do NOT share this link with anyone. Once someone joins using this link, it cannot be reassigned or changed to a different Telegram account. If you're facing any issue accessing your course, please contact support.
           </p>
         </div>
         <div className="flex gap-2">
