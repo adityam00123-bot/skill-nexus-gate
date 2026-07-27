@@ -49,6 +49,7 @@ import AdminRoute from "./components/admin/AdminRoute";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminCourses from "./pages/admin/Courses";
+import AdminTelegramAssign from "./pages/admin/TelegramAssign";
 import AdminUsers from "./pages/admin/Users";
 import AdminOrders from "./pages/admin/Orders";
 import AdminSubscriptions from "./pages/admin/Subscriptions";
@@ -114,6 +115,7 @@ const App = () => (
                   <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
                     <Route index element={<AdminDashboard />} />
                     <Route path="courses" element={<AdminCourses />} />
+                    <Route path="telegram-assign" element={<AdminTelegramAssign />} />
                     <Route path="users" element={<AdminUsers />} />
                     <Route path="orders" element={<AdminOrders />} />
                     <Route path="subscriptions" element={<AdminSubscriptions />} />

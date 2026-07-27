@@ -494,7 +494,7 @@ export default function AdminCourses() {
       "title", "description", "short_description", "price", "original_price",
       "thumbnail_url", "instructor_name", "instructor_bio", "category",
       "subcategory", "level", "language", "duration_hours", "total_lectures",
-      "manual_rating", "manual_students", "telegram_link", "is_free",
+      "manual_rating", "manual_students", "is_free",
       "is_featured", "is_published", "tags", "what_you_learn", "requirements"
     ];
 
@@ -557,7 +557,12 @@ export default function AdminCourses() {
         // Boolean fields: default to false
         obj.is_free = obj.is_free === "true";
         obj.is_featured = obj.is_featured === "true";
-        obj.is_published = obj.is_published === "true";
+        
+        // Force draft state and clear telegram fields for new imports
+        obj.is_published = false;
+        obj.status = 'draft';
+        obj.telegram_channel_id = null;
+        obj.telegram_link = null;
 
         // Handle arrays with specific separators and defaults
         if (obj.tags && typeof obj.tags === "string" && obj.tags.trim()) {

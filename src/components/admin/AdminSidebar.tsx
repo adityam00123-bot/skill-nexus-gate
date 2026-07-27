@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, BookOpen, Users, ShoppingCart, CreditCard,
-  Briefcase, Coins, ArrowLeftRight, DollarSign, Bell, Settings, LogOut, X, Menu, ExternalLink
+  Briefcase, Coins, ArrowLeftRight, DollarSign, Bell, Settings, LogOut, X, Menu, ExternalLink, Link as LinkIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,6 +31,7 @@ export default function AdminSidebar() {
   const links = [
     { to: "/admin", icon: LayoutDashboard, label: "Dashboard", end: true },
     { to: "/admin/courses", icon: BookOpen, label: "Courses" },
+    { to: "/admin/telegram-assign", icon: LinkIcon, label: "Channel Assignment" },
     { to: "/admin/users", icon: Users, label: "Users" },
     { to: "/admin/orders", icon: ShoppingCart, label: "Orders" },
     { to: "/admin/subscriptions", icon: CreditCard, label: "Subscriptions" },
