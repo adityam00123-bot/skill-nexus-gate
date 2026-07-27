@@ -30,3 +30,7 @@ CREATE POLICY "Admin delete channels"
     ON public.telegram_bot_channels
     FOR DELETE
     USING (auth.role() = 'authenticated');
+
+-- Explicit Grants
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.telegram_bot_channels TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.telegram_bot_channels TO service_role;
