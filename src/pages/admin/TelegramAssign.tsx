@@ -34,9 +34,9 @@ export default function AdminTelegramAssign() {
       // Fetch unassigned channels (assigned_to_course_id is null)
       const { data: channelsData, error: channelsError } = await (supabase as any)
         .from("telegram_bot_channels")
-        .select("id, channel_id, channel_title, channel_username, created_at")
+        .select("id, channel_id, channel_title, detected_at")
         .is("assigned_to_course_id", null)
-        .order("created_at", { ascending: false });
+        .order("detected_at", { ascending: false });
 
       if (channelsError) throw channelsError;
       setChannels(channelsData || []);
@@ -81,7 +81,7 @@ export default function AdminTelegramAssign() {
         throw channelError;
       }
 
-      toast({ title: "Channel Assigned Successfully", description: `Linked "${course.title}" to "${channel.channel_title || channel.channel_username}"` });
+      toast({ title: "Channel Assigned Successfully", description: `Linked "${course.title}" to "${channel.channel_title || channel.channel_id}"` });
       
       // Remove assigned items from state
       setCourses(prev => prev.filter(c => c.id !== course.id));
@@ -118,7 +118,7 @@ export default function AdminTelegramAssign() {
     if (!selectedCourseTitle) return new Map();
     const map = new Map<string, number>();
     channels.forEach(ch => {
-      const score = getSimilarityScore(selectedCourseTitle, ch.channel_title || ch.channel_username || "");
+      const score = getSimilarityScore(selectedCourseTitle, ch.channel_title || "");
       map.set(ch.channel_id, score);
     });
     return map;
@@ -218,7 +218,6 @@ export default function AdminTelegramAssign() {
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
-                          {channel.channel_username && <span>@{channel.channel_username}</span>}
                           <span className="opacity-50">[{channel.channel_id}]</span>
                         </p>
                       </div>
