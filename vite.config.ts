@@ -11,6 +11,9 @@ export default defineConfig({
       overlay: false,
     },
   },
+  build: {
+    sourcemap: false,
+  },
   plugins: [react()],
   resolve: {
     alias: {

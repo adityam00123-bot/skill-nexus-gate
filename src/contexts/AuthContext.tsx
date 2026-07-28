@@ -38,10 +38,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .select("*")
       .eq("id", userId)
       .maybeSingle();
+    
+    if (!data || data.is_blocked) {
+      // Profile deleted or blocked
+      await signOut();
+      return;
+    }
+    
     setProfile(data);
   };
 
   useEffect(() => {
+    let profileSubscription: any = null;
+
+    const setupProfileSubscription = (userId: string) => {
+      if (profileSubscription) supabase.removeChannel(profileSubscription);
+      
+      profileSubscription = supabase
+        .channel(`public:profiles:id=eq.${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+          (payload) => {
+            if (payload.eventType === "DELETE") {
+              signOut();
+            } else if (payload.eventType === "UPDATE") {
+              const updatedProfile = payload.new as Profile;
+              setProfile(updatedProfile);
+              if (updatedProfile.is_blocked) {
+                signOut();
+              }
+            }
+          }
+        )
+        .subscribe();
+    };
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
@@ -50,8 +82,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (session?.user) {
           // Use setTimeout to avoid Supabase client deadlock
           setTimeout(() => fetchProfile(session.user.id), 0);
+          setupProfileSubscription(session.user.id);
         } else {
           setProfile(null);
+          if (profileSubscription) supabase.removeChannel(profileSubscription);
         }
         setLoading(false);
       }
@@ -63,11 +97,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);
+        setupProfileSubscription(session.user.id);
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (profileSubscription) supabase.removeChannel(profileSubscription);
+    };
   }, []);
 
   const signOut = async () => {

@@ -38,29 +38,50 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    (supabase as any)
-      .from("subscriptions")
-      .select("*")
-      .eq("user_id", user.id)
-      .in("status", ["active", "cancelled"])
-      .order("created_at", { ascending: false })
-      .then(({ data }: any) => {
-        if (data && data.length > 0) {
-          const now = new Date();
-          const validSub = data.find((sub: any) => 
-            !sub.end_date || new Date(sub.end_date) > now
-          );
-          if (validSub) {
-            setSubscription(validSub as Subscription);
+    let subSubscription: any = null;
+
+    const fetchSubscription = () => {
+      setLoading(true);
+      (supabase as any)
+        .from("subscriptions")
+        .select("*")
+        .eq("user_id", user.id)
+        .in("status", ["active", "cancelled"])
+        .order("created_at", { ascending: false })
+        .then(({ data }: any) => {
+          if (data && data.length > 0) {
+            const now = new Date();
+            const validSub = data.find((sub: any) => 
+              !sub.end_date || new Date(sub.end_date) > now
+            );
+            if (validSub) {
+              setSubscription(validSub as Subscription);
+            } else {
+              setSubscription(null);
+            }
           } else {
             setSubscription(null);
           }
-        } else {
-          setSubscription(null);
+          setLoading(false);
+        });
+    };
+
+    fetchSubscription();
+
+    subSubscription = supabase
+      .channel(`public:subscriptions:user_id=eq.${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${user.id}` },
+        () => {
+          fetchSubscription();
         }
-        setLoading(false);
-      });
+      )
+      .subscribe();
+
+    return () => {
+      if (subSubscription) supabase.removeChannel(subSubscription);
+    };
   }, [user]);
 
   const isSubscribed = !!subscription;

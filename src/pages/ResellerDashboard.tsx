@@ -71,6 +71,8 @@ const ResellerDashboard = () => {
     if (!authLoading && !user) { navigate("/login"); return; }
     if (!user) return;
 
+    let appSubscription: any = null;
+
     const checkApproval = async () => {
       const { data } = await supabase
         .from("reseller_applications")
@@ -78,14 +80,38 @@ const ResellerDashboard = () => {
         .eq("user_id", user.id)
         .maybeSingle();
       
-      if (!data) {
-        // No application at all — send back to CV Business
+      if (!data || data.status === "rejected") {
         navigate("/cv-business");
         return;
       }
       setAppStatus(data.status as AppStatus);
     };
+    
     checkApproval();
+
+    appSubscription = supabase
+      .channel(`public:reseller_applications:user_id=eq.${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "reseller_applications", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            navigate("/cv-business");
+          } else if (payload.eventType === "UPDATE") {
+            const newStatus = payload.new.status;
+            if (newStatus === "rejected") {
+              navigate("/cv-business");
+            } else {
+              setAppStatus(newStatus as AppStatus);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (appSubscription) supabase.removeChannel(appSubscription);
+    };
   }, [user, authLoading, navigate]);
 
   const isApproved = appStatus === "approved";
