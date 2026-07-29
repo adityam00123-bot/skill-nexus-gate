@@ -44,6 +44,21 @@ const Login = () => {
       });
       setLoading(false);
     } else {
+      // Check if blocked before fully logging in
+      if (data?.session?.user?.id) {
+        const { data: profile } = await supabase.from("profiles").select("is_blocked").eq("id", data.session.user.id).single();
+        if (profile?.is_blocked) {
+          await supabase.auth.signOut();
+          toast({ 
+            title: "Account Blocked", 
+            description: "Your account is blocked due to violation of our terms and conditions. Please contact support.", 
+            variant: "destructive" 
+          });
+          setLoading(false);
+          return;
+        }
+      }
+      
       toast({ title: "Welcome back!", description: "You've been logged in successfully." });
       navigate("/", { replace: true });
     }

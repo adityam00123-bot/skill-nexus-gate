@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 interface Profile {
   full_name: string | null;
@@ -40,6 +41,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .maybeSingle();
     
     if (!data || data.is_blocked) {
+      if (data?.is_blocked) {
+        toast({ 
+          title: "Account Blocked", 
+          description: "Your account is blocked due to violation of our terms and conditions. Please contact support.", 
+          variant: "destructive" 
+        });
+      }
       // Profile deleted or blocked
       await signOut();
       return;
@@ -66,6 +74,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               const updatedProfile = payload.new as Profile;
               setProfile(updatedProfile);
               if (updatedProfile.is_blocked) {
+                toast({ 
+                  title: "Account Blocked", 
+                  description: "Your account is blocked due to violation of our terms and conditions. Please contact support.", 
+                  variant: "destructive" 
+                });
                 signOut();
               }
             }

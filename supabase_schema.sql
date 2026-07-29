@@ -586,11 +586,15 @@ CREATE POLICY "Authenticated users can read all profiles"
   TO authenticated
   USING (true);
 
-CREATE POLICY "Users can update their own profile"
-  ON public.profiles FOR UPDATE
-  USING (auth.uid() = id);
+  CREATE POLICY "Users can update their own profile"
+    ON public.profiles FOR UPDATE
+    USING (auth.uid() = id);
 
-CREATE POLICY "Users can insert own profile"
+  CREATE POLICY "Admins can update profiles"
+    ON public.profiles FOR UPDATE
+    USING (public.has_role(auth.uid(), 'admin'));
+  
+  CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = id);
@@ -927,6 +931,10 @@ CREATE POLICY "Admin delete cv_transactions"
 
 
 -- ==================== referrals ====================
+-- Added by migration 20260729161100_fix_admin_profile_update.sql
+GRANT SELECT, UPDATE ON public.profiles TO authenticated;
+GRANT SELECT, UPDATE ON public.profiles TO service_role;
+
 CREATE POLICY "Users can read own referrals"
   ON public.referrals FOR SELECT
   TO authenticated
