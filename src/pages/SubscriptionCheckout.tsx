@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const plans = [
   {
@@ -63,16 +65,54 @@ const SubscriptionCheckout = () => {
     return ["yearly", "monthly"].includes(initialPlan) ? initialPlan : "yearly";
   });
   
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("upi");
-  const [upiId, setUpiId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("wallets");
   const [showCoupon, setShowCoupon] = useState(false);
   const [coupon, setCoupon] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const plan = plans.find((p) => p.id === selectedPlan)!;
+  const planAmount = selectedPlan === 'yearly' ? 3999 : 499;
 
-  const handleStartSubscription = () => {
-    localStorage.setItem('selectedPlan', selectedPlan);
-    navigate(`/payment-success?plan=${selectedPlan}`);
+  const handleStartSubscription = async () => {
+    if (!user) return;
+    
+    // Validate wallet balance
+    if (paymentMethod === "wallets") {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("wallet_balance")
+        .eq("id", user.id)
+        .single();
+        
+      if ((profile?.wallet_balance || 0) < planAmount) {
+        toast.error("Insufficient wallet balance. Please add funds to your wallet first.");
+        return;
+      }
+    } else {
+      toast.error("Only wallet payments are currently supported for subscriptions.");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const idempotencyKey = crypto.randomUUID();
+      const { data: rpcRes, error: rpcError } = await supabase.rpc("process_subscription_purchase", {
+        p_user_id: user.id,
+        p_plan_name: selectedPlan,
+        p_idempotency_key: idempotencyKey
+      });
+
+      if (rpcError) throw rpcError;
+      if (!rpcRes.success) throw new Error(rpcRes.error || "Subscription purchase failed");
+
+      localStorage.setItem('selectedPlan', selectedPlan);
+      navigate(`/payment-success?plan=${selectedPlan}`);
+    } catch (error: any) {
+      console.error("Subscription error:", error);
+      toast.error(error.message || "Failed to process subscription. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -200,48 +240,31 @@ const SubscriptionCheckout = () => {
                 </span>
               </div>
               <div className="space-y-3">
-                {([
-                  { id: "upi" as PaymentMethod, label: "UPI", icon: Smartphone },
-                  { id: "cards" as PaymentMethod, label: "Cards", icon: CreditCard, extra: "Visa · Mastercard · RuPay" },
-                  { id: "netbanking" as PaymentMethod, label: "Net Banking", icon: Building2 },
-                  { id: "wallets" as PaymentMethod, label: "Mobile Wallets", icon: Wallet },
-                ]).map((m) => (
-                  <div key={m.id}>
-                    <button
-                      onClick={() => setPaymentMethod(m.id)}
-                      className={`w-full flex items-center gap-3 rounded-xl border-2 p-4 transition-all text-left ${
-                        paymentMethod === m.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border bg-card hover:border-muted-foreground/30"
+                <div key="wallets">
+                  <button
+                    onClick={() => setPaymentMethod("wallets")}
+                    className={`w-full flex items-center gap-3 rounded-xl border-2 p-4 transition-all text-left ${
+                      paymentMethod === "wallets"
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-card hover:border-muted-foreground/30"
+                    }`}
+                  >
+                    <div
+                      className={`h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        paymentMethod === "wallets" ? "border-primary" : "border-muted-foreground/40"
                       }`}
                     >
-                      <div
-                        className={`h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                          paymentMethod === m.id ? "border-primary" : "border-muted-foreground/40"
-                        }`}
-                      >
-                        {paymentMethod === m.id && (
-                          <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                        )}
-                      </div>
-                      <m.icon className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{m.label}</p>
-                        {m.extra && <p className="text-xs text-muted-foreground">{m.extra}</p>}
-                      </div>
-                    </button>
-                    {paymentMethod === "upi" && m.id === "upi" && (
-                      <div className="mt-3 pl-11">
-                        <Input
-                          value={upiId}
-                          onChange={(e) => setUpiId(e.target.value)}
-                          placeholder="Enter your UPI ID"
-                          className="bg-card border-border"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      {paymentMethod === "wallets" && (
+                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <Wallet className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Wallet Balance</p>
+                      <p className="text-xs text-muted-foreground">Pay instantly using your wallet funds</p>
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -296,14 +319,12 @@ const SubscriptionCheckout = () => {
                 <Button
                   className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-12 text-base shadow-glow transition-all"
                   onClick={handleStartSubscription}
-                  disabled={mode === "change_plan" && selectedPlan === currentPlanName}
+                  disabled={(mode === "change_plan" && selectedPlan === currentPlanName) || isProcessing}
                 >
                   <Lock className="h-4 w-4 mr-2" /> 
-                  {mode === "change_plan" ? `Switch to ${selectedPlan === "yearly" ? "Yearly" : "Monthly"}` : "Start Subscription"}
+                  {isProcessing ? "Processing..." : mode === "change_plan" ? `Switch to ${selectedPlan === "yearly" ? "Yearly" : "Monthly"}` : "Pay with Wallet"}
                 </Button>
-                <p className="text-xs text-center text-muted-foreground mt-2">
-                  Payment integration coming soon — will be connected to Paytm.
-                </p>
+
               </div>
             </div>
           </div>
