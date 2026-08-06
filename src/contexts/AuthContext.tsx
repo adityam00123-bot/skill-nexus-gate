@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -15,6 +15,7 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -23,6 +24,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   signOut: async () => {},
+  refreshProfile: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -50,11 +52,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       // Profile deleted or blocked
       await signOut();
+      setLoading(false);
       return;
     }
     
     setProfile(data);
+    setLoading(false);
   };
+
+  const refreshProfile = useCallback(async () => {
+    if (user) {
+      await fetchProfile(user.id);
+    }
+  }, [user]);
 
   useEffect(() => {
     let profileSubscription: any = null;
@@ -69,6 +79,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
           (payload) => {
             if (payload.eventType === "DELETE") {
+              toast({ 
+                title: "Account Deleted", 
+                description: "Your account has been deleted by an administrator. Please contact support if you believe this is a mistake.", 
+                variant: "destructive" 
+              });
               signOut();
             } else if (payload.eventType === "UPDATE") {
               const updatedProfile = payload.new as Profile;
@@ -99,8 +114,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setProfile(null);
           if (profileSubscription) supabase.removeChannel(profileSubscription);
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
@@ -111,8 +126,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (session?.user) {
         fetchProfile(session.user.id);
         setupProfileSubscription(session.user.id);
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => {
@@ -129,7 +145,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, profile, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

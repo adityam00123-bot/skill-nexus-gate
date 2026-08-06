@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -15,6 +15,7 @@ interface SubscriptionContextType {
   loading: boolean;
   subscribe: (plan: "monthly" | "yearly") => Promise<void>;
   reactivate: () => Promise<void>;
+  refreshSubscription: () => void;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType>({
@@ -23,6 +24,7 @@ const SubscriptionContext = createContext<SubscriptionContextType>({
   loading: true,
   subscribe: async () => {},
   reactivate: async () => {},
+  refreshSubscription: () => {},
 });
 
 export const useSubscription = () => useContext(SubscriptionContext);
@@ -32,43 +34,47 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchSubscription = useCallback(() => {
+    if (!user) {
+      setSubscription(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    (supabase as any)
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", user.id)
+      .in("status", ["active", "cancelled"])
+      .order("created_at", { ascending: false })
+      .then(({ data }: any) => {
+        if (data && data.length > 0) {
+          const now = new Date();
+          const validSub = data.find((sub: any) => 
+            !sub.end_date || new Date(sub.end_date) > now
+          );
+          if (validSub) {
+            setSubscription(validSub as Subscription);
+          } else {
+            setSubscription(null);
+          }
+        } else {
+          setSubscription(null);
+        }
+        setLoading(false);
+      });
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       setSubscription(null);
       setLoading(false);
       return;
     }
-    let subSubscription: any = null;
-
-    const fetchSubscription = () => {
-      setLoading(true);
-      (supabase as any)
-        .from("subscriptions")
-        .select("*")
-        .eq("user_id", user.id)
-        .in("status", ["active", "cancelled"])
-        .order("created_at", { ascending: false })
-        .then(({ data }: any) => {
-          if (data && data.length > 0) {
-            const now = new Date();
-            const validSub = data.find((sub: any) => 
-              !sub.end_date || new Date(sub.end_date) > now
-            );
-            if (validSub) {
-              setSubscription(validSub as Subscription);
-            } else {
-              setSubscription(null);
-            }
-          } else {
-            setSubscription(null);
-          }
-          setLoading(false);
-        });
-    };
 
     fetchSubscription();
 
-    subSubscription = supabase
+    const subSubscription = supabase
       .channel(`public:subscriptions:user_id=eq.${user.id}`)
       .on(
         "postgres_changes",
@@ -82,7 +88,7 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       if (subSubscription) supabase.removeChannel(subSubscription);
     };
-  }, [user]);
+  }, [user, fetchSubscription]);
 
   const isSubscribed = !!subscription;
 
@@ -158,7 +164,7 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <SubscriptionContext.Provider value={{ subscription, isSubscribed, loading, subscribe, reactivate }}>
+    <SubscriptionContext.Provider value={{ subscription, isSubscribed, loading, subscribe, reactivate, refreshSubscription: fetchSubscription }}>
       {children}
     </SubscriptionContext.Provider>
   );

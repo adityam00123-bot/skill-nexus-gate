@@ -43,8 +43,8 @@ type PaymentMethod = "upi" | "cards" | "netbanking" | "wallets";
 const SubscriptionCheckout = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
-  const { isSubscribed, subscription } = useSubscription();
+  const { user, refreshProfile } = useAuth();
+  const { isSubscribed, subscription, refreshSubscription } = useSubscription();
   const mode = isSubscribed ? "change_plan" : "new_subscription";
   const currentPlanName = (subscription as any)?.plan_name?.toLowerCase();
 
@@ -104,6 +104,10 @@ const SubscriptionCheckout = () => {
 
       if (rpcError) throw rpcError;
       if (!rpcRes.success) throw new Error(rpcRes.error || "Subscription purchase failed");
+
+      // Refresh contexts so the destination page gets fresh data
+      await refreshProfile();
+      refreshSubscription();
 
       localStorage.setItem('selectedPlan', selectedPlan);
       navigate(`/payment-success?plan=${selectedPlan}`);

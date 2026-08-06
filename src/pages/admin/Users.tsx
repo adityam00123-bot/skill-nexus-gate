@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, ShieldCheck, Shield, Eye, Users, Ban, Trash2, Send, CreditCard, ShoppingBag, Info, IndianRupee } from "lucide-react";
+import { Search, ShieldCheck, Shield, Eye, Users, Ban, Trash2, Send, CreditCard, ShoppingBag, Info, IndianRupee, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getCourseById } from "@/data/courses";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,8 @@ interface UserRow {
   purchases: any[];
   purchase_count: number;
   total_spent: number;
+  distinct_telegram_ids: number;
+  telegram_access_map: Map<string, number | null>; // course_id -> joined_telegram_user_id
 }
 
 export default function AdminUsers() {
@@ -99,7 +101,14 @@ export default function AdminUsers() {
         
       if (puErr) throw puErr;
 
-      // Step 5: Merge Safely
+      // Step 5: Fetch Telegram Access for fraud detection
+      const { data: telegramAccessRes, error: taErr } = await supabase
+        .from("telegram_access")
+        .select("user_id, course_id, joined_telegram_user_id");
+      
+      if (taErr) throw taErr;
+
+      // Step 6: Merge Safely
       const roleMap = new Map((rolesRes || []).map((r: any) => [r.user_id, r.role]));
       const balanceMap = new Map((balancesRes || []).map((b: any) => [b.user_id, b.balance]));
       
@@ -107,6 +116,20 @@ export default function AdminUsers() {
       (purchasesRes || []).forEach((p: any) => {
         if (!purchasesMap.has(p.user_id)) purchasesMap.set(p.user_id, []);
         purchasesMap.get(p.user_id)?.push(p);
+      });
+
+      // Build telegram access maps: user_id -> Map<course_id, joined_telegram_user_id>
+      // and user_id -> Set of distinct telegram user IDs
+      const userTelegramAccessMap = new Map<string, Map<string, number | null>>();
+      const userDistinctTgIds = new Map<string, Set<number>>();
+      (telegramAccessRes || []).forEach((ta: any) => {
+        if (!userTelegramAccessMap.has(ta.user_id)) userTelegramAccessMap.set(ta.user_id, new Map());
+        userTelegramAccessMap.get(ta.user_id)!.set(ta.course_id, ta.joined_telegram_user_id);
+        
+        if (ta.joined_telegram_user_id) {
+          if (!userDistinctTgIds.has(ta.user_id)) userDistinctTgIds.set(ta.user_id, new Set());
+          userDistinctTgIds.get(ta.user_id)!.add(ta.joined_telegram_user_id);
+        }
       });
 
       const merged: UserRow[] = (profilesRes || []).map((p: any) => {
@@ -127,7 +150,9 @@ export default function AdminUsers() {
           balance: balanceMap.get(p.id) || 0,
           purchases: userPurchases,
           purchase_count: userPurchases.length,
-          total_spent: totalSpent
+          total_spent: totalSpent,
+          distinct_telegram_ids: userDistinctTgIds.get(p.id)?.size || 0,
+          telegram_access_map: userTelegramAccessMap.get(p.id) || new Map(),
         };
       });
 
@@ -220,6 +245,28 @@ export default function AdminUsers() {
     const newBlockedState = !u.is_blocked;
     
     try {
+      // 1. Call Telegram API to ban/unban from channels
+      const { data: authData } = await supabase.auth.getSession();
+      const token = authData.session?.access_token;
+      
+      if (token) {
+        // We do this concurrently or before DB update, doesn't matter, 
+        // but doing it before ensures they are banned even if DB fails.
+        // Doing it after DB ensures DB consistency. We'll do it before.
+        await fetch('/api/telegram/ban-user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            target_user_id: u.id,
+            action: newBlockedState ? 'ban' : 'unban'
+          })
+        }).catch(err => console.error("Telegram API Error:", err));
+      }
+
+      // 2. Update DB
       const { error } = await supabase.from("profiles").update({ is_blocked: newBlockedState } as any).eq("id", u.id);
       if (error) throw error;
       
@@ -239,33 +286,32 @@ export default function AdminUsers() {
     const uId = deleteDialog.user.id;
     
     try {
-      // STRICT DELETE ORDER:
-      // 1. notifications
-      // 2. cv_coin_transactions
-      // 3. purchases
-      // 4. cv_coin_balances
-      // 5. user_roles
-      // 6. profiles
-
-      await supabase.from("notifications").delete().eq("user_id", uId);
-      await supabase.from("cv_coin_transactions").delete().eq("user_id", uId);
-      await supabase.from("purchases").delete().eq("user_id", uId);
-      await supabase.from("cv_coin_balances").delete().eq("user_id", uId);
-      await (supabase as any).from("user_roles").delete().eq("user_id", uId);
+      const { data: authData } = await supabase.auth.getSession();
+      const token = authData.session?.access_token;
       
-      const { error: profileError } = await supabase.from("profiles").delete().eq("id", uId);
-      if (profileError) throw profileError;
+      if (!token) throw new Error("Not authenticated");
 
-      // We cannot delete the auth.users directly from client, but removing profiles is enough to detach them from the platform.
+      const res = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ target_user_id: uId })
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to delete user');
       
-      toast({ title: "User completely deleted" });
+      toast({ title: "User completely deleted", description: "Auth account, all data, and Telegram access have been revoked." });
       fetchUsers();
     } catch (error: any) {
       toast({ title: "Failed to delete user", description: error.message, variant: "destructive" });
     } finally {
-      setSubmitting(false);
+      setSubmitting(true);
       setDeleteDialog({ isOpen: false, user: null });
       if (viewUser && viewUser.id === uId) setViewUser(null);
+      setSubmitting(false);
     }
   };
 
@@ -370,7 +416,14 @@ export default function AdminUsers() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col max-w-[150px] lg:max-w-[200px]">
-                          <span className="font-semibold text-sm truncate">{u.full_name || "No Name"}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-sm truncate">{u.full_name || "No Name"}</span>
+                            {u.distinct_telegram_ids >= 5 && (
+                              <span title="Multiple Telegram IDs detected — possible account sharing" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 whitespace-nowrap">
+                                <AlertTriangle className="h-3 w-3" /> Multi-TG
+                              </span>
+                            )}
+                          </div>
                           <span className="text-xs text-muted-foreground truncate">{u.email || "—"}</span>
                         </div>
                       </div>
@@ -512,16 +565,19 @@ export default function AdminUsers() {
                               <TableRow className="border-[#334155]">
                                 <TableHead>Course</TableHead>
                                 <TableHead>Amount Paid</TableHead>
+                                <TableHead>Telegram ID</TableHead>
                                 <TableHead>Date</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               {viewUser.purchases.map(p => {
                                 const course = getCourseById(p.course_id);
+                                const tgId = viewUser.telegram_access_map.get(p.course_id);
                                 return (
                                   <TableRow key={p.id} className="border-[#334155]">
                                     <TableCell className="font-medium max-w-[250px] truncate">{course?.title || p.course_id}</TableCell>
                                     <TableCell className="text-green-400">₹{p.price_paid}</TableCell>
+                                    <TableCell className="font-mono text-xs text-blue-300">{tgId || '—'}</TableCell>
                                     <TableCell className="text-sm">{new Date(p.created_at).toLocaleDateString()}</TableCell>
                                   </TableRow>
                                 );
