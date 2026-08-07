@@ -82,7 +82,31 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 4. Delete the auth user (cascades to profiles and all related tables)
+    // 4. Snapshot the user's key info into deleted_users_archive before cascade delete
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('full_name, email')
+      .eq('id', target_user_id)
+      .maybeSingle();
+
+    const { data: purchaseStats } = await supabase
+      .from('purchases')
+      .select('price_paid')
+      .eq('user_id', target_user_id);
+
+    const totalPurchases = purchaseStats?.length || 0;
+    const totalAmountSpent = (purchaseStats || []).reduce((sum: number, p: any) => sum + (Number(p.price_paid) || 0), 0);
+
+    await supabase.from('deleted_users_archive').insert({
+      original_user_id: target_user_id,
+      full_name: profileData?.full_name || null,
+      email: profileData?.email || null,
+      total_purchases: totalPurchases,
+      total_amount_spent: totalAmountSpent,
+      deleted_by: user.id
+    });
+
+    // 5. Delete the auth user (cascades to profiles and all related tables)
     const { error: deleteError } = await supabase.auth.admin.deleteUser(target_user_id);
     if (deleteError) {
       console.error('Error deleting auth user:', deleteError);

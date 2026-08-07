@@ -10,9 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, ShieldCheck, Shield, Eye, Users, Ban, Trash2, Send, CreditCard, ShoppingBag, Info, IndianRupee, AlertTriangle } from "lucide-react";
+import { Search, ShieldCheck, Shield, Eye, Users, Ban, Trash2, Send, CreditCard, ShoppingBag, Info, IndianRupee, AlertTriangle, Wallet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getCourseById } from "@/data/courses";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -27,6 +26,7 @@ interface UserRow {
   upi_id?: string | null;
   paytm_number?: string | null;
   is_blocked?: boolean;
+  wallet_balance: number;
   
   // Merged properties
   role: "admin" | "user";
@@ -35,7 +35,7 @@ interface UserRow {
   purchase_count: number;
   total_spent: number;
   distinct_telegram_ids: number;
-  telegram_access_map: Map<string, number | null>; // course_id -> joined_telegram_user_id
+  telegram_access_map: Map<string, { tg_user_id: number | null, tg_username: string | null }>;
 }
 
 export default function AdminUsers() {
@@ -75,7 +75,7 @@ export default function AdminUsers() {
       // Step 1: Fetch Profiles
       const { data: profilesRes, error: pErr } = await supabase
         .from("profiles")
-        .select("id, full_name, email, avatar_url, created_at, is_blocked, telegram_username, upi_id, paytm_number")
+        .select("id, full_name, email, avatar_url, created_at, is_blocked, telegram_username, upi_id, paytm_number, wallet_balance")
         .order("created_at", { ascending: false });
         
       if (pErr) throw pErr;
@@ -104,27 +104,40 @@ export default function AdminUsers() {
       // Step 5: Fetch Telegram Access for fraud detection
       const { data: telegramAccessRes, error: taErr } = await supabase
         .from("telegram_access")
-        .select("user_id, course_id, joined_telegram_user_id");
+        .select("user_id, course_id, joined_telegram_user_id, joined_telegram_username");
       
       if (taErr) throw taErr;
 
-      // Step 6: Merge Safely
+      // Step 6: Fetch all courses from DB for name lookups
+      const { data: coursesRes } = await supabase
+        .from("courses")
+        .select("id, title");
+      
+      const courseNameMap = new Map<string, string>();
+      (coursesRes || []).forEach((c: any) => courseNameMap.set(c.id, c.title));
+
+      // Step 7: Merge Safely
       const roleMap = new Map((rolesRes || []).map((r: any) => [r.user_id, r.role]));
       const balanceMap = new Map((balancesRes || []).map((b: any) => [b.user_id, b.balance]));
       
       const purchasesMap = new Map<string, any[]>();
       (purchasesRes || []).forEach((p: any) => {
         if (!purchasesMap.has(p.user_id)) purchasesMap.set(p.user_id, []);
+        // Attach course_title from DB lookup
+        p.course_title = courseNameMap.get(p.course_id) || null;
         purchasesMap.get(p.user_id)?.push(p);
       });
 
-      // Build telegram access maps: user_id -> Map<course_id, joined_telegram_user_id>
+      // Build telegram access maps: user_id -> Map<course_id, { tg_user_id, tg_username }>
       // and user_id -> Set of distinct telegram user IDs
-      const userTelegramAccessMap = new Map<string, Map<string, number | null>>();
+      const userTelegramAccessMap = new Map<string, Map<string, { tg_user_id: number | null, tg_username: string | null }>>();
       const userDistinctTgIds = new Map<string, Set<number>>();
       (telegramAccessRes || []).forEach((ta: any) => {
         if (!userTelegramAccessMap.has(ta.user_id)) userTelegramAccessMap.set(ta.user_id, new Map());
-        userTelegramAccessMap.get(ta.user_id)!.set(ta.course_id, ta.joined_telegram_user_id);
+        userTelegramAccessMap.get(ta.user_id)!.set(ta.course_id, {
+          tg_user_id: ta.joined_telegram_user_id,
+          tg_username: ta.joined_telegram_username
+        });
         
         if (ta.joined_telegram_user_id) {
           if (!userDistinctTgIds.has(ta.user_id)) userDistinctTgIds.set(ta.user_id, new Set());
@@ -146,6 +159,7 @@ export default function AdminUsers() {
           upi_id: p.upi_id,
           paytm_number: p.paytm_number,
           is_blocked: p.is_blocked || false,
+          wallet_balance: Number(p.wallet_balance) || 0,
           role: (roleMap.get(p.id) || "user") as "admin" | "user",
           balance: balanceMap.get(p.id) || 0,
           purchases: userPurchases,
@@ -418,7 +432,7 @@ export default function AdminUsers() {
                         <div className="flex flex-col max-w-[150px] lg:max-w-[200px]">
                           <div className="flex items-center gap-1.5">
                             <span className="font-semibold text-sm truncate">{u.full_name || "No Name"}</span>
-                            {u.distinct_telegram_ids >= 5 && (
+                            {u.distinct_telegram_ids >= 4 && (
                               <span title="Multiple Telegram IDs detected — possible account sharing" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 whitespace-nowrap">
                                 <AlertTriangle className="h-3 w-3" /> Multi-TG
                               </span>
@@ -543,7 +557,7 @@ export default function AdminUsers() {
 
                 {activeTab === "finance" && (
                   <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-6 flex flex-col justify-center items-center text-center space-y-2">
                         <ShoppingBag className="h-8 w-8 text-blue-400 mb-2" />
                         <p className="text-sm text-muted-foreground uppercase">Total Purchases</p>
@@ -553,6 +567,11 @@ export default function AdminUsers() {
                         <IndianRupee className="h-8 w-8 text-green-400 mb-2" />
                         <p className="text-sm text-muted-foreground uppercase">Total Spent</p>
                         <p className="text-3xl font-bold text-green-400">₹{viewUser.total_spent.toLocaleString()}</p>
+                      </CardContent></Card>
+                      <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-6 flex flex-col justify-center items-center text-center space-y-2">
+                        <Wallet className="h-8 w-8 text-purple-400 mb-2" />
+                        <p className="text-sm text-muted-foreground uppercase">Wallet Balance</p>
+                        <p className="text-3xl font-bold text-purple-400">₹{viewUser.wallet_balance.toLocaleString()}</p>
                       </CardContent></Card>
                     </div>
 
@@ -565,19 +584,20 @@ export default function AdminUsers() {
                               <TableRow className="border-[#334155]">
                                 <TableHead>Course</TableHead>
                                 <TableHead>Amount Paid</TableHead>
-                                <TableHead>Telegram ID</TableHead>
+                                <TableHead>TG Handle</TableHead>
+                                <TableHead>TG User ID</TableHead>
                                 <TableHead>Date</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               {viewUser.purchases.map(p => {
-                                const course = getCourseById(p.course_id);
-                                const tgId = viewUser.telegram_access_map.get(p.course_id);
+                                const tgAccess = viewUser.telegram_access_map.get(p.course_id);
                                 return (
                                   <TableRow key={p.id} className="border-[#334155]">
-                                    <TableCell className="font-medium max-w-[250px] truncate">{course?.title || p.course_id}</TableCell>
+                                    <TableCell className="font-medium max-w-[200px] truncate">{p.course_title || p.course_id}</TableCell>
                                     <TableCell className="text-green-400">₹{p.price_paid}</TableCell>
-                                    <TableCell className="font-mono text-xs text-blue-300">{tgId || '—'}</TableCell>
+                                    <TableCell className="text-xs text-blue-300">{tgAccess?.tg_username ? `@${tgAccess.tg_username}` : 'null'}</TableCell>
+                                    <TableCell className="font-mono text-xs text-muted-foreground">{tgAccess?.tg_user_id || '—'}</TableCell>
                                     <TableCell className="text-sm">{new Date(p.created_at).toLocaleDateString()}</TableCell>
                                   </TableRow>
                                 );

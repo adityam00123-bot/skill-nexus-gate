@@ -6,6 +6,7 @@ import { useWishlistContext } from "@/contexts/WishlistContext";
 import { useCartContext } from "@/contexts/CartContext";
 import { usePurchaseContext } from "@/contexts/PurchaseContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Course } from "@/data/courses";
 
 const CourseCard = ({ course }: { course: Course }) => {
@@ -14,11 +15,14 @@ const CourseCard = ({ course }: { course: Course }) => {
   const { isInCart, addToCart } = useCartContext();
   const { isPurchased } = usePurchaseContext();
   const { isSubscribed } = useSubscription();
+  const { loading } = useAuth();
   
   const price = course.price || 0;
   const originalPrice = course.originalPrice || price;
   const discount = originalPrice > 0 ? Math.round((1 - price / originalPrice) * 100) : 0;
-  const hasAccess = isPurchased(course.id) || isSubscribed;
+  // Don't show "View Course" / purchased state while the auth block-check is still resolving
+  // This prevents a flash of "View Course" for blocked users on the public homepage
+  const hasAccess = !loading && (isPurchased(course.id) || isSubscribed);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -42,11 +46,11 @@ const CourseCard = ({ course }: { course: Course }) => {
                 {discount}% OFF
               </Badge>
             )}
-            {isPurchased(course.id) ? (
+            {!loading && isPurchased(course.id) ? (
               <Badge className="bg-primary text-primary-foreground text-[10px] font-semibold gap-1 px-2 py-0.5">
                 <CheckCircle className="h-3 w-3" /> Purchased
               </Badge>
-            ) : isSubscribed ? (
+            ) : !loading && isSubscribed ? (
               <Badge className="bg-secondary text-secondary-foreground text-[10px] font-semibold gap-1 px-2 py-0.5">
                 <Crown className="h-3 w-3" /> Premium
               </Badge>
