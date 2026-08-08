@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, ShieldCheck, Shield, Eye, Users, Ban, Trash2, Send, CreditCard, ShoppingBag, Info, IndianRupee, AlertTriangle, Wallet } from "lucide-react";
+import { Search, ShieldCheck, Shield, Eye, Users, Ban, Trash2, Send, CreditCard, ShoppingBag, Info, IndianRupee, AlertTriangle, Wallet, Crown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,6 +36,7 @@ interface UserRow {
   total_spent: number;
   distinct_telegram_ids: number;
   telegram_access_map: Map<string, { tg_user_id: number | null, tg_username: string | null }>;
+  latest_telegram_user_id: number | null;
 }
 
 export default function AdminUsers() {
@@ -132,6 +133,7 @@ export default function AdminUsers() {
       // and user_id -> Set of distinct telegram user IDs
       const userTelegramAccessMap = new Map<string, Map<string, { tg_user_id: number | null, tg_username: string | null }>>();
       const userDistinctTgIds = new Map<string, Set<number>>();
+      const userLatestTgId = new Map<string, number | null>();
       (telegramAccessRes || []).forEach((ta: any) => {
         if (!userTelegramAccessMap.has(ta.user_id)) userTelegramAccessMap.set(ta.user_id, new Map());
         userTelegramAccessMap.get(ta.user_id)!.set(ta.course_id, {
@@ -142,12 +144,38 @@ export default function AdminUsers() {
         if (ta.joined_telegram_user_id) {
           if (!userDistinctTgIds.has(ta.user_id)) userDistinctTgIds.set(ta.user_id, new Set());
           userDistinctTgIds.get(ta.user_id)!.add(ta.joined_telegram_user_id);
+          // Track the latest (most recent entry wins since we iterate in insertion order)
+          userLatestTgId.set(ta.user_id, ta.joined_telegram_user_id);
         }
+      });
+
+      // Step 8: Fetch Subscription History for purchase history display
+      const { data: subHistoryRes } = await (supabase as any)
+        .from("subscription_history")
+        .select("user_id, plan_name, action, amount, created_at")
+        .eq("action", "subscribed")
+        .not("amount", "is", null);
+
+      const subHistoryMap = new Map<string, any[]>();
+      (subHistoryRes || []).forEach((sh: any) => {
+        if (!subHistoryMap.has(sh.user_id)) subHistoryMap.set(sh.user_id, []);
+        subHistoryMap.get(sh.user_id)!.push({
+          id: `sub-${sh.created_at}-${sh.plan_name}`,
+          course_id: null,
+          course_title: `${sh.plan_name} Subscription`,
+          price_paid: sh.amount,
+          created_at: sh.created_at,
+          is_subscription: true
+        });
       });
 
       const merged: UserRow[] = (profilesRes || []).map((p: any) => {
         const userPurchases = purchasesMap.get(p.id) || [];
-        const totalSpent = userPurchases.reduce((sum, purchase) => sum + (Number(purchase.price_paid) || 0), 0);
+        const userSubPurchases = subHistoryMap.get(p.id) || [];
+        const allPurchases = [...userPurchases, ...userSubPurchases].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        const totalSpent = allPurchases.reduce((sum, purchase) => sum + (Number(purchase.price_paid) || 0), 0);
         
         return {
           id: p.id,
@@ -162,11 +190,12 @@ export default function AdminUsers() {
           wallet_balance: Number(p.wallet_balance) || 0,
           role: (roleMap.get(p.id) || "user") as "admin" | "user",
           balance: balanceMap.get(p.id) || 0,
-          purchases: userPurchases,
-          purchase_count: userPurchases.length,
+          purchases: allPurchases,
+          purchase_count: allPurchases.length,
           total_spent: totalSpent,
           distinct_telegram_ids: userDistinctTgIds.get(p.id)?.size || 0,
           telegram_access_map: userTelegramAccessMap.get(p.id) || new Map(),
+          latest_telegram_user_id: userLatestTgId.get(p.id) || null,
         };
       });
 
@@ -545,6 +574,10 @@ export default function AdminUsers() {
                       <p className="text-sm font-medium text-blue-400">{viewUser.telegram_username ? `@${viewUser.telegram_username}` : "Not Set"}</p>
                     </CardContent></Card>
                     <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase">Telegram User ID</p>
+                      <p className="font-mono text-sm font-medium text-blue-300">{viewUser.latest_telegram_user_id || "Not Set"}</p>
+                    </CardContent></Card>
+                    <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
                       <p className="text-xs text-muted-foreground uppercase">UPI ID</p>
                       <p className="text-sm font-medium">{viewUser.upi_id || "Not Set"}</p>
                     </CardContent></Card>
@@ -591,13 +624,18 @@ export default function AdminUsers() {
                             </TableHeader>
                             <TableBody>
                               {viewUser.purchases.map(p => {
-                                const tgAccess = viewUser.telegram_access_map.get(p.course_id);
+                                const tgAccess = p.course_id ? viewUser.telegram_access_map.get(p.course_id) : null;
                                 return (
                                   <TableRow key={p.id} className="border-[#334155]">
-                                    <TableCell className="font-medium max-w-[200px] truncate">{p.course_title || p.course_id}</TableCell>
+                                    <TableCell className="font-medium max-w-[200px] truncate">
+                                      <span className="flex items-center gap-1.5">
+                                        {p.is_subscription && <Crown className="h-3.5 w-3.5 text-yellow-400 shrink-0" />}
+                                        {p.course_title || p.course_id || '—'}
+                                      </span>
+                                    </TableCell>
                                     <TableCell className="text-green-400">₹{p.price_paid}</TableCell>
-                                    <TableCell className="text-xs text-blue-300">{tgAccess?.tg_username ? `@${tgAccess.tg_username}` : 'null'}</TableCell>
-                                    <TableCell className="font-mono text-xs text-muted-foreground">{tgAccess?.tg_user_id || '—'}</TableCell>
+                                    <TableCell className="text-xs text-blue-300">{p.is_subscription ? '—' : (tgAccess?.tg_username ? `@${tgAccess.tg_username}` : 'null')}</TableCell>
+                                    <TableCell className="font-mono text-xs text-muted-foreground">{p.is_subscription ? '—' : (tgAccess?.tg_user_id || '—')}</TableCell>
                                     <TableCell className="text-sm">{new Date(p.created_at).toLocaleDateString()}</TableCell>
                                   </TableRow>
                                 );

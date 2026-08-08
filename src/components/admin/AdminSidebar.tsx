@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, BookOpen, Users, ShoppingCart, CreditCard,
-  Briefcase, Coins, ArrowLeftRight, DollarSign, Bell, Settings, LogOut, X, Menu, ExternalLink, Link as LinkIcon
+  Briefcase, Coins, ArrowLeftRight, DollarSign, Bell, Settings, LogOut, X, Menu, ExternalLink, Link as LinkIcon, UserX
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,6 +40,7 @@ export default function AdminSidebar() {
     { to: "/admin/exchange-requests", icon: ArrowLeftRight, label: "Exchange Requests", badge: badges.exchange },
     { to: "/admin/sell-requests", icon: DollarSign, label: "Sell Requests", badge: badges.sell },
     { to: "/admin/notifications", icon: Bell, label: "Notifications" },
+    { to: "/admin/user-audit", icon: UserX, label: "User Audit" },
     { to: "/admin/settings", icon: Settings, label: "Settings" },
   ];
 

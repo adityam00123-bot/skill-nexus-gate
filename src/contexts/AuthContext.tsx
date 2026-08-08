@@ -50,9 +50,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           variant: "destructive" 
         });
       }
-      // Profile deleted or blocked
-      await signOut();
-      setLoading(false);
+      // Hard redirect to destroy all React state — prevents stale UI flash
+      await supabase.auth.signOut();
+      window.location.href = "/";
       return;
     }
     
@@ -79,22 +79,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
           (payload) => {
             if (payload.eventType === "DELETE") {
-              toast({ 
-                title: "Account Deleted", 
-                description: "Your account has been deleted by an administrator. Please contact support if you believe this is a mistake.", 
-                variant: "destructive" 
+              // Hard redirect — destroy all stale React state immediately
+              supabase.auth.signOut().then(() => {
+                window.location.href = "/";
               });
-              signOut();
             } else if (payload.eventType === "UPDATE") {
               const updatedProfile = payload.new as Profile;
               setProfile(updatedProfile);
               if (updatedProfile.is_blocked) {
-                toast({ 
-                  title: "Account Blocked", 
-                  description: "Your account is blocked due to violation of our terms and conditions. Please contact support.", 
-                  variant: "destructive" 
+                // Hard redirect — destroy all stale React state immediately
+                supabase.auth.signOut().then(() => {
+                  window.location.href = "/";
                 });
-                signOut();
               }
             }
           }

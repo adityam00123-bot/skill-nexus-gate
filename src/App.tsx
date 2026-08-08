@@ -58,6 +58,7 @@ import AdminCvCoins from "./pages/admin/CvCoinsAdmin";
 import AdminExchangeRequests from "./pages/admin/ExchangeRequests";
 import AdminSellRequests from "./pages/admin/SellRequests";
 import AdminNotifications from "./pages/admin/AdminNotifications";
+import DeletedBlockedUsers from "./pages/admin/DeletedBlockedUsers";
 import AdminSettings from "./pages/admin/Settings";
 
 const queryClient = new QueryClient();
@@ -124,6 +125,7 @@ const App = () => (
                     <Route path="exchange-requests" element={<AdminExchangeRequests />} />
                     <Route path="sell-requests" element={<AdminSellRequests />} />
                     <Route path="notifications" element={<AdminNotifications />} />
+                    <Route path="user-audit" element={<DeletedBlockedUsers />} />
                     <Route path="settings" element={<AdminSettings />} />
                   </Route>
                   <Route path="*" element={<NotFound />} />

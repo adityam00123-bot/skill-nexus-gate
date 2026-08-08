@@ -10,6 +10,7 @@ import {
   ArrowRight,
   MessageCircle,
   Loader2,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -145,7 +146,9 @@ const MyLearning = () => {
   const { wishlistIds } = useWishlistContext();
   const { isSubscribed } = useSubscription();
   const [purchasedCourses, setPurchasedCourses] = useState<Course[]>([]);
+  const [subscriptionCourses, setSubscriptionCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (!user) {
@@ -235,11 +238,57 @@ const MyLearning = () => {
   // Simulated recently viewed (random selection from all courses)
   const recentlyViewed = useMemo(() => courses.slice(0, 6), []);
 
-  // Subscription courses (sample if subscribed)
-  const subscriptionCourses = useMemo(
-    () => (isSubscribed ? courses.slice(0, 12) : []),
-    [isSubscribed]
-  );
+  // Fetch ALL published courses from DB for subscribed users
+  useEffect(() => {
+    if (!isSubscribed || !user) {
+      setSubscriptionCourses([]);
+      return;
+    }
+
+    const fetchSubscriptionCourses = async () => {
+      const { data: courseRows } = await supabase
+        .from("courses")
+        .select(`
+          id, title, description, short_description, instructor_name, thumbnail_url, price, original_price, category, duration_hours, total_lectures, level, telegram_link,
+          telegram_bot_channels(persistent_access_link)
+        `)
+        .eq("is_published", true)
+        .eq("is_deleted", false);
+
+      const mapped: Course[] = (courseRows || []).map((c: any) => {
+        let persistentLink = null;
+        if (c.telegram_bot_channels && c.telegram_bot_channels.length > 0) {
+          persistentLink = c.telegram_bot_channels[0].persistent_access_link;
+        }
+        return {
+          id: c.id,
+          title: c.title,
+          instructor: c.instructor_name || "Unknown Instructor",
+          thumbnail: c.thumbnail_url || "/placeholder.svg",
+          price: Number(c.price) || 0,
+          originalPrice: Number(c.original_price) || Number(c.price) || 0,
+          category: c.category || "Trading",
+          subcategory: "",
+          duration: c.duration_hours ? `${c.duration_hours}h` : "0h",
+          lessons: Number(c.total_lectures) || 0,
+          level: c.level || "Beginner",
+          description: c.short_description || c.description || "",
+          longDescription: c.description || "",
+          rating: 0,
+          students: 0,
+          tags: [],
+          telegramLink: c.telegram_link || "",
+          persistentAccessLink: persistentLink
+        } as Course;
+      });
+
+      // Exclude courses already individually purchased
+      const purchasedSet = new Set(purchasedCourses.map(c => c.id));
+      setSubscriptionCourses(mapped.filter(c => !purchasedSet.has(c.id)));
+    };
+
+    fetchSubscriptionCourses();
+  }, [isSubscribed, user, purchasedCourses]);
 
   if (authLoading || loading) {
     return (
@@ -263,9 +312,23 @@ const MyLearning = () => {
 
       <div className="container max-w-[1000px] mx-auto px-4 py-10 space-y-12">
         {/* Page Header */}
-        <div>
-          <h1 className="font-display font-bold text-3xl text-foreground">My Learning</h1>
-          <p className="text-muted-foreground mt-1">Continue your learning journey.</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="font-display font-bold text-3xl text-foreground">My Learning</h1>
+            <p className="text-muted-foreground mt-1">Continue your learning journey.</p>
+          </div>
+          {!hasNoCourses && (
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search courses..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+              />
+            </div>
+          )}
         </div>
 
         {hasNoCourses ? (
@@ -312,7 +375,9 @@ const MyLearning = () => {
                 <p className="text-sm text-muted-foreground">No purchased courses yet.</p>
               ) : (
                 <div className="space-y-3">
-                  {purchasedCourses.map((course) => (
+                  {purchasedCourses
+                    .filter(course => !searchQuery || course.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .map((course) => (
                     <CourseRow
                       key={course.id}
                       course={course}
@@ -333,7 +398,9 @@ const MyLearning = () => {
                   linkLabel="Manage"
                 />
                 <div className="space-y-3">
-                  {subscriptionCourses.map((course) => (
+                  {subscriptionCourses
+                    .filter(course => !searchQuery || course.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .map((course) => (
                     <CourseRow
                       key={course.id}
                       course={course}
