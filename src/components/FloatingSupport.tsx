@@ -6,7 +6,7 @@ const menuItems = [
   {
     icon: Send,
     label: "Telegram Support",
-    href: "https://t.me/courseverse_support",
+    href: "https://t.me/courseversesupport",
     external: true,
   },
   {

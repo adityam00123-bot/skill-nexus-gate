@@ -60,6 +60,7 @@ import AdminSellRequests from "./pages/admin/SellRequests";
 import AdminNotifications from "./pages/admin/AdminNotifications";
 import DeletedBlockedUsers from "./pages/admin/DeletedBlockedUsers";
 import AdminSettings from "./pages/admin/Settings";
+import AdminSupport from "./pages/admin/Support";
 
 const queryClient = new QueryClient();
 
@@ -127,6 +128,7 @@ const App = () => (
                     <Route path="notifications" element={<AdminNotifications />} />
                     <Route path="user-audit" element={<DeletedBlockedUsers />} />
                     <Route path="settings" element={<AdminSettings />} />
+                    <Route path="support" element={<AdminSupport />} />
                   </Route>
                   <Route path="*" element={<NotFound />} />
                 </Routes>
