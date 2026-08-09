@@ -31,6 +31,7 @@ interface Stats {
   allCourses: any[];
   allProfiles: any[];
   allRoles: any[];
+  allSubscriptions: any[];
 }
 
 const DONUT_COLORS = ["#22C55E", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#EC4899", "#14B8A6"];
@@ -44,7 +45,7 @@ function formatCurrency(num: number) {
   return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(num);
 }
 
-function buildChartData(purchases: any[], days: number) {
+function buildChartData(purchases: any[], subscriptions: any[], days: number) {
   const now = new Date();
   const data: { date: string; revenue: number; sales: number }[] = [];
   for (let i = days - 1; i >= 0; i--) {
@@ -52,10 +53,12 @@ function buildChartData(purchases: any[], days: number) {
     d.setDate(d.getDate() - i);
     const key = d.toISOString().slice(0, 10);
     const dayPurchases = purchases.filter((p) => p.created_at.slice(0, 10) === key);
+    const daySubs = subscriptions.filter((s: any) => s.created_at.slice(0, 10) === key);
     data.push({
       date: key.slice(5),
-      revenue: dayPurchases.reduce((s: number, p: any) => s + Number(p.price_paid), 0),
-      sales: dayPurchases.length,
+      revenue: dayPurchases.reduce((s: number, p: any) => s + Number(p.price_paid), 0)
+        + daySubs.reduce((s: number, sub: any) => s + Number(sub.amount), 0),
+      sales: dayPurchases.length + daySubs.length,
     });
   }
   return data;
@@ -83,7 +86,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     async function load() {
-      const [profilesRes, coursesRes, purchasesRes, subsRes, resellersRes, exchangeRes, sellRes, rolesRes] =
+      const [profilesRes, coursesRes, purchasesRes, subsRes, resellersRes, exchangeRes, sellRes, rolesRes, subHistoryRes] =
         await Promise.all([
           supabase.from("profiles").select("*").order("created_at", { ascending: false }),
           supabase.from("courses").select("*"),
@@ -93,18 +96,27 @@ export default function AdminDashboard() {
           supabase.from("exchange_requests").select("id").eq("status", "pending"),
           supabase.from("sell_requests").select("id").eq("status", "pending"),
           supabase.from("user_roles").select("*"),
+          (supabase as any).from("subscription_history").select("user_id, plan_name, action, amount, created_at").eq("action", "subscribed").not("amount", "is", null),
         ]);
 
       const profiles = profilesRes.data || [];
       const courses = coursesRes.data || [];
       const purchases = purchasesRes.data || [];
       const roles = rolesRes.data || [];
-      const revenue = purchases.reduce((s, p) => s + Number(p.price_paid), 0);
+      const subHistory = subHistoryRes.data || [];
+      const courseRevenue = purchases.reduce((s, p) => s + Number(p.price_paid), 0);
+      const subRevenue = subHistory.reduce((s: number, sh: any) => s + Number(sh.amount), 0);
+      const revenue = courseRevenue + subRevenue;
 
       const today = new Date().toISOString().slice(0, 10);
-      const todayRevenue = purchases
+      const todayCourseRevenue = purchases
         .filter((p) => p.created_at.slice(0, 10) === today)
         .reduce((s, p) => s + Number(p.price_paid), 0);
+      const todaySubRevenue = subHistory
+        .filter((sh: any) => sh.created_at.slice(0, 10) === today)
+        .reduce((s: number, sh: any) => s + Number(sh.amount), 0);
+      const todayRevenue = todayCourseRevenue + todaySubRevenue;
+      const totalTransactions = purchases.length + subHistory.length;
 
       setStats({
         users: profiles.length,
@@ -116,13 +128,14 @@ export default function AdminDashboard() {
         pendingExchange: (exchangeRes.data || []).length,
         pendingSell: (sellRes.data || []).length,
         todayRevenue,
-        avgOrderValue: purchases.length ? Math.round(revenue / purchases.length) : 0,
+        avgOrderValue: totalTransactions ? Math.round(revenue / totalTransactions) : 0,
         recentOrders: purchases.slice(0, 20),
         recentUsers: profiles.slice(0, 20),
         allPurchases: purchases,
         allCourses: courses,
         allProfiles: profiles,
         allRoles: roles,
+        allSubscriptions: subHistory,
       });
       setLoading(false);
     }
@@ -143,8 +156,8 @@ export default function AdminDashboard() {
     );
   if (!stats) return null;
 
-  const days = Number(chartPeriod);
-  const chartData = buildChartData(stats.allPurchases, days);
+  const days = parseInt(chartPeriod);
+  const chartData = buildChartData(stats.allPurchases, stats.allSubscriptions, days);
   const categoryData = buildCategoryData(stats.allPurchases, stats.allCourses);
 
   const courseMap = new Map(stats.allCourses.map((c) => [c.id, c]));

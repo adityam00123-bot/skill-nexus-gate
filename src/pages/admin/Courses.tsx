@@ -93,6 +93,7 @@ const emptyForm: CourseForm = {
 export default function AdminCourses() {
   const [courses, setCourses] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
   const [botChannels, setBotChannels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,10 +154,18 @@ export default function AdminCourses() {
       const { data: bData, error: bError } = await supabase.from("telegram_bot_channels").select("*").order("detected_at", { ascending: false });
       if (bError) console.error("Error fetching bot channels:", bError);
       
+      const { data: sData, error: sError } = await (supabase as any)
+        .from("subscription_history")
+        .select("amount")
+        .eq("action", "subscribed")
+        .not("amount", "is", null);
+      if (sError) console.error("Error fetching subscriptions:", sError);
+
       setCourses(cData || []);
       setPurchases(pData || []);
       setReviews(rData || []);
       setBotChannels(bData || []);
+      setSubscriptions(sData || []);
     } catch (err) {
       console.error("Unexpected error:", err);
     } finally {
@@ -213,7 +222,9 @@ export default function AdminCourses() {
   const totalCourses = courses.length; // Already filtered is_deleted=false locally via state
   const publishedCourses = courses.filter(c => c.is_published).length;
   const draftCourses = courses.filter(c => !c.is_published).length;
-  const totalRevenue = purchases.reduce((sum, p) => sum + (Number(p.price_paid) || 0), 0);
+  const courseRevenue = purchases.reduce((sum, p) => sum + (Number(p.price_paid) || 0), 0);
+  const subRevenue = subscriptions.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  const totalRevenue = courseRevenue + subRevenue;
   const totalStudents = purchases.length;
 
   const openAdd = () => {

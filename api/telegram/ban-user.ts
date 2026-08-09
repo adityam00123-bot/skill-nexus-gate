@@ -81,6 +81,15 @@ export default async function handler(req: any, res: any) {
       
       const tgData = await tgRes.json();
       results.push({ chat_id: chatId, success: tgData.ok, description: tgData.description });
+
+      // Immediately unban to remove from ban list (kick without permanent ban)
+      if (action === 'ban') {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/unbanChatMember`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, user_id: tgUserId, only_if_banned: true })
+        });
+      }
     }
 
     return res.status(200).json({ success: true, results });

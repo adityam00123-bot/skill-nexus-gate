@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Receipt, ExternalLink, ShoppingBag } from "lucide-react";
+import { Receipt, ExternalLink, ShoppingBag, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
 import CategoryBar from "@/components/CategoryBar";
@@ -26,7 +26,32 @@ interface Purchase {
 const PurchaseHistory = () => {
   const { user, loading: authLoading } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [subscriptionPurchases, setSubscriptionPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchSubscriptions = async () => {
+      const { data } = await supabase
+        .from('subscription_history')
+        .select('plan_name, action, amount, created_at')
+        .eq('user_id', user.id)
+        .eq('action', 'subscribed')
+        .not('amount', 'is', null)
+        .order('created_at', { ascending: false });
+      setSubscriptionPurchases((data || []).map((s: any) => ({
+        id: `sub-${s.created_at}`,
+        course_title: `${s.plan_name} Subscription`,
+        instructor: 'Subscription Plan',
+        thumbnail: null,
+        price_paid: s.amount,
+        created_at: s.created_at,
+        telegram_link: null,
+        is_subscription: true
+      })));
+    };
+    fetchSubscriptions();
+  }, [user]);
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -113,6 +138,10 @@ const PurchaseHistory = () => {
     );
   }
 
+  const allPurchases = [...purchases, ...subscriptionPurchases].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -120,7 +149,7 @@ const PurchaseHistory = () => {
       <div className="container mx-auto px-4 py-12">
         <h1 className="font-display font-bold text-3xl text-foreground mb-8">Purchase History</h1>
 
-        {purchases.length === 0 ? (
+        {allPurchases.length === 0 ? (
           <div className="bg-card rounded-xl border border-border p-12 text-center space-y-4 my-8">
             <ShoppingBag className="h-16 w-16 text-muted-foreground mx-auto" />
             <h2 className="font-display font-semibold text-xl text-foreground">No courses purchased yet</h2>
@@ -131,7 +160,29 @@ const PurchaseHistory = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {purchases.map((p) => {
+            {allPurchases.map((p: any) => {
+              if (p.is_subscription) {
+                return (
+                  <div key={p.id} className="bg-card rounded-xl border border-border p-4 flex gap-4 items-center">
+                    <div className="shrink-0 w-28 h-18 bg-amber-100/20 rounded-lg flex items-center justify-center border border-amber-200/50">
+                      <Crown className="h-6 w-6 text-amber-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-foreground line-clamp-1 flex items-center gap-2">
+                        {p.course_title} <Crown className="h-4 w-4 text-amber-500" />
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">by {p.instructor}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Purchased on {new Date(p.created_at).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 space-y-2">
+                      <p className="font-display font-bold text-foreground">₹{p.price_paid}</p>
+                    </div>
+                  </div>
+                );
+              }
+
               const staticCourse = getCourseById(p.course_id);
               const courseData = p.courses || staticCourse;
               

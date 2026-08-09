@@ -36,6 +36,7 @@ interface OrderRow {
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Filtering & Pagination
@@ -57,10 +58,11 @@ export default function AdminOrders() {
     setLoading(true);
     try {
       // Fetching separately as requested
-      const [purchasesRes, profilesRes, coursesRes] = await Promise.all([
+      const [purchasesRes, profilesRes, coursesRes, subHistoryRes] = await Promise.all([
         supabase.from("purchases").select("*").order("created_at", { ascending: false }),
         supabase.from("profiles").select("id, full_name, email, avatar_url"),
         supabase.from("courses").select("id, title, thumbnail_url, instructor_name"),
+        (supabase as any).from("subscription_history").select("amount").eq("action", "subscribed").not("amount", "is", null),
       ]);
 
       if (purchasesRes.error) throw purchasesRes.error;
@@ -103,6 +105,7 @@ export default function AdminOrders() {
       });
 
       setOrders(mergedOrders);
+      setSubscriptions(subHistoryRes.data || []);
     } catch (error: any) {
       console.error("Error fetching orders:", error);
       toast({ title: "Error fetching data", description: error.message, variant: "destructive" });
@@ -179,8 +182,10 @@ export default function AdminOrders() {
 
   // Derived stats using filtered data (or all orders, depending on intent. Usually metrics are for ALL visible orders)
   // Recomputing stats for total dataset (excluding deleted is handled inside fetch) 
-  const totalOrders = orders.length; // exclude deleted
-  const totalRevenue = orders.reduce((sum, o) => sum + o.price_paid, 0);
+  const totalOrders = orders.length + subscriptions.length; // exclude deleted
+  const courseRevenue = orders.reduce((sum, o) => sum + o.price_paid, 0);
+  const subRevenue = subscriptions.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  const totalRevenue = courseRevenue + subRevenue;
   const uniqueCustomers = new Set(orders.map(o => o.user_id)).size;
   const avgOrderValue = totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(0) : 0;
 

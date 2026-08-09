@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from 'react-router-dom';
+import { ToastAction } from '@/components/ui/toast';
+import React from 'react';
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 
@@ -9,6 +12,7 @@ const isUUID = (str: string) =>
 const LOCAL_STORAGE_KEY = "cv_cart_dummy_ids";
 
 export function useCart() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [cartIds, setCartIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -72,7 +76,15 @@ export function useCart() {
           const updated = [...localIds, courseId];
           saveLocalDummyIds(updated);
           setCartIds(new Set([...Array.from(cartIds), courseId]));
-          toast({ title: "Added to cart", description: "Example course added to your cart (local storage)." });
+          toast({
+            title: "Added to cart",
+            description: "Example course added to your cart (local storage).",
+            action: React.createElement(ToastAction, {
+              altText: "View Cart",
+              onClick: () => navigate('/cart'),
+              className: "bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-1.5 rounded-md text-xs font-medium"
+            }, "View Cart")
+          });
         }
         return;
       }
@@ -101,7 +113,15 @@ export function useCart() {
         });
         toast({ title: "Error", description: error.message || "Could not add to cart.", variant: "destructive" });
       } else {
-        toast({ title: "Added to cart", description: "Course added to your cart." });
+        toast({
+          title: "Added to cart",
+          description: "Course added to your cart.",
+          action: React.createElement(ToastAction, {
+            altText: "View Cart",
+            onClick: () => navigate('/cart'),
+            className: "bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-1.5 rounded-md text-xs font-medium"
+          }, "View Cart")
+        });
       }
     },
     [user, cartIds],
