@@ -65,6 +65,7 @@ const Login = () => {
   };
 
   const handleGoogleLogin = async () => {
+    localStorage.setItem("oauth_intent", "login");
     const { error } = await lovable.auth.signInWithOAuth("google", {
       redirectTo: window.location.origin,
     });

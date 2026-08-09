@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MessageCircle, CheckCircle, Clock, Send, AlertCircle, Search, User } from "lucide-react";
+import { MessageCircle, CheckCircle, Clock, Send, AlertCircle, Search, User, Paperclip, Image as ImageIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +33,7 @@ interface SupportMessage {
   sender_type: string;
   message: string;
   created_at: string;
+  attachment_url?: string | null;
 }
 
 export default function AdminSupport() {
@@ -44,10 +45,12 @@ export default function AdminSupport() {
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchTickets = async () => {
     try {
@@ -132,17 +135,41 @@ export default function AdminSupport() {
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!replyText.trim() || !selectedTicket) return;
+    if ((!replyText.trim() && !attachment) || !selectedTicket) return;
 
     setSending(true);
     try {
+      let attachment_url = null;
+
+      if (attachment) {
+        if (attachment.size > 20 * 1024 * 1024) {
+          throw new Error("File size must be less than 20MB");
+        }
+        const fileExt = attachment.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
+        const filePath = `${selectedTicket.id}/${fileName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('support_attachments')
+          .upload(filePath, attachment);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('support_attachments')
+          .getPublicUrl(filePath);
+
+        attachment_url = publicUrl;
+      }
+
       const { error } = await supabase
         .from("support_messages")
         .insert({
           ticket_id: selectedTicket.id,
           sender_type: 'admin',
           sender_id: user?.id,
-          message: replyText.trim()
+          message: replyText.trim(),
+          attachment_url
         });
 
       if (error) throw error;
@@ -154,6 +181,7 @@ export default function AdminSupport() {
         .eq("id", selectedTicket.id);
 
       setReplyText("");
+      setAttachment(null);
       fetchTickets(); // Refresh tickets to update sorting/timestamps
     } catch (err: any) {
       console.error(err);
@@ -312,7 +340,14 @@ export default function AdminSupport() {
                               ? "bg-primary text-primary-foreground rounded-br-sm" 
                               : "bg-[#1E293B] border border-[#334155] text-foreground rounded-bl-sm"
                           )}>
-                            <p className="whitespace-pre-wrap break-words text-sm">{msg.message}</p>
+                            {msg.attachment_url && (
+                              <img 
+                                src={msg.attachment_url} 
+                                alt="Attachment" 
+                                className="max-w-full rounded-lg mb-2"
+                              />
+                            )}
+                            {msg.message && <p className="whitespace-pre-wrap break-words text-sm">{msg.message}</p>}
                           </div>
                           <span className="text-[10px] text-muted-foreground mt-1 mx-1">
                             {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -328,18 +363,56 @@ export default function AdminSupport() {
 
             {/* Input Form */}
             {selectedTicket.status !== 'resolved' ? (
-              <form onSubmit={handleSendReply} className="p-4 border-t border-[#334155] bg-[#0F172A] flex gap-2">
-                <Input
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Type your reply here..."
-                  className="flex-1 bg-[#1E293B] border-[#334155]"
-                  disabled={sending}
-                />
-                <Button type="submit" disabled={sending || !replyText.trim()}>
-                  <Send className="h-4 w-4 mr-2" />
-                  {sending ? "Sending" : "Send"}
-                </Button>
+              <form onSubmit={handleSendReply} className="p-4 border-t border-[#334155] bg-[#0F172A] flex flex-col gap-2">
+                {attachment && (
+                  <div className="relative w-20 h-20 mb-2">
+                    <img 
+                      src={URL.createObjectURL(attachment)} 
+                      alt="Preview" 
+                      className="w-full h-full object-cover rounded-md border border-[#334155]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAttachment(null)}
+                      className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1 text-white hover:bg-red-600"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setAttachment(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon"
+                    className="shrink-0 bg-[#1E293B] border-[#334155]"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                  <Input
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Type your reply here..."
+                    className="flex-1 bg-[#1E293B] border-[#334155]"
+                    disabled={sending}
+                  />
+                  <Button type="submit" disabled={sending || (!replyText.trim() && !attachment)}>
+                    <Send className="h-4 w-4 mr-2" />
+                    {sending ? "Sending" : "Send"}
+                  </Button>
+                </div>
               </form>
             ) : (
               <div className="p-4 border-t border-[#334155] bg-[#0F172A]/50 text-center text-muted-foreground flex items-center justify-center gap-2 text-sm">

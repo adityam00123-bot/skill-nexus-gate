@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Mail, Send, MessageSquare, Clock, CheckCircle2, ChevronRight, User as UserIcon, ShieldAlert } from "lucide-react";
+import { Mail, Send, MessageSquare, Clock, CheckCircle2, ChevronRight, User as UserIcon, ShieldAlert, Paperclip, Image as ImageIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,8 +38,10 @@ export default function Contact() {
   const [messages, setMessages] = useState<any[]>([]);
   const [replyMessage, setReplyMessage] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
+  const [attachment, setAttachment] = useState<File | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (profile?.full_name) setName(profile.full_name);
@@ -137,20 +139,36 @@ export default function Contact() {
 
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!replyMessage.trim() || !selectedTicket || !user) return;
+    if ((!replyMessage.trim() && !attachment) || !selectedTicket || !user) return;
     
     setReplyLoading(true);
     try {
+      let attachment_url = null;
+      if (attachment) {
+        if (attachment.size > 20 * 1024 * 1024) {
+          throw new Error("File size must be less than 20MB");
+        }
+        const fileExt = attachment.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
+        const filePath = `${selectedTicket.id}/${fileName}`;
+        const { error: uploadError } = await supabase.storage.from('support_attachments').upload(filePath, attachment);
+        if (uploadError) throw uploadError;
+        const { data: { publicUrl } } = supabase.storage.from('support_attachments').getPublicUrl(filePath);
+        attachment_url = publicUrl;
+      }
+
       const { error } = await supabase
         .from('support_messages')
         .insert({
           ticket_id: selectedTicket.id,
           sender_type: 'user',
           sender_id: user.id,
-          message: replyMessage
+          message: replyMessage,
+          attachment_url
         });
       if (error) throw error;
       setReplyMessage("");
+      setAttachment(null);
     } catch (error: any) {
       toast({ title: "Failed to send reply", description: error.message, variant: "destructive" });
     } finally {
@@ -319,7 +337,14 @@ export default function Contact() {
                             {isUser ? <UserIcon className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
                           </div>
                           <div className={`max-w-[75%] rounded-2xl p-3 text-sm ${isUser ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm'}`}>
-                            <p className="whitespace-pre-wrap">{msg.message}</p>
+                            {msg.attachment_url && (
+                              <div className="mb-2 rounded-lg overflow-hidden border border-white/20">
+                                <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
+                                  <img src={msg.attachment_url} alt="Attachment" className="max-h-60 w-auto object-cover hover:opacity-90 transition-opacity" />
+                                </a>
+                              </div>
+                            )}
+                            {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
                             <p className={`text-[10px] mt-1 text-right ${isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </p>
@@ -331,8 +356,20 @@ export default function Contact() {
                   </div>
                   
                   {selectedTicket.status === 'open' ? (
-                    <div className="p-3 border-t border-border bg-background shrink-0">
-                      <form onSubmit={handleReply} className="flex gap-2">
+                    <div className="p-3 border-t border-border bg-background shrink-0 flex flex-col gap-2">
+                      {attachment && (
+                        <div className="relative inline-block w-fit">
+                          <img src={URL.createObjectURL(attachment)} alt="Preview" className="h-20 w-auto rounded border border-border object-cover" />
+                          <button 
+                            type="button" 
+                            onClick={() => setAttachment(null)} 
+                            className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-0.5 hover:bg-destructive/90"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                      <form onSubmit={handleReply} className="flex gap-2 items-end">
                         <Input 
                           value={replyMessage}
                           onChange={(e) => setReplyMessage(e.target.value)}
@@ -340,7 +377,27 @@ export default function Contact() {
                           className="flex-1"
                           disabled={replyLoading}
                         />
-                        <Button type="submit" size="icon" disabled={replyLoading || !replyMessage.trim()}>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          ref={fileInputRef}
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setAttachment(e.target.files[0]);
+                            }
+                          }}
+                        />
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="icon"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={replyLoading}
+                        >
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
+                        <Button type="submit" size="icon" disabled={replyLoading || (!replyMessage.trim() && !attachment)}>
                           <Send className="h-4 w-4" />
                         </Button>
                       </form>

@@ -66,6 +66,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
+  const checkOAuthIntent = async (currentUser: User) => {
+    const intent = localStorage.getItem("oauth_intent");
+    if (!intent) return true;
+
+    const createdAt = new Date(currentUser.created_at).getTime();
+    const lastSignIn = new Date(currentUser.last_sign_in_at || currentUser.created_at).getTime();
+    const isNewUser = Math.abs(lastSignIn - createdAt) < 15000; // within 15 seconds
+
+    localStorage.removeItem("oauth_intent");
+
+    if (intent === "login" && isNewUser) {
+      await supabase.rpc('delete_current_user');
+      await supabase.auth.signOut();
+      toast({
+        title: "Account not found",
+        description: "Please sign up first before logging in.",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (intent === "signup" && !isNewUser) {
+      await supabase.auth.signOut();
+      toast({
+        title: "User already exists",
+        description: "Please use the Login button instead.",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    return true;
+  };
+
   useEffect(() => {
     let profileSubscription: any = null;
 
@@ -101,6 +135,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (session?.user) {
+          const isValid = await checkOAuthIntent(session.user);
+          if (!isValid) {
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+        }
+        
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
@@ -116,7 +160,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
 
     // THEN check existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const isValid = await checkOAuthIntent(session.user);
+        if (!isValid) {
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
