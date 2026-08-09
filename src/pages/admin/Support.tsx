@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Profile {
   full_name: string | null;
@@ -44,6 +45,7 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
+  const { user } = useAuth();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -139,6 +141,7 @@ export default function AdminSupport() {
         .insert({
           ticket_id: selectedTicket.id,
           sender_type: 'admin',
+          sender_id: user?.id,
           message: replyText.trim()
         });
 
