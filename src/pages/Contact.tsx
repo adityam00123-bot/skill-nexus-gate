@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { Mail, Send, MessageSquare, Clock, CheckCircle2, ChevronRight, User as UserIcon, ShieldAlert, Paperclip, Image as ImageIcon, X } from "lucide-react";
+import { Mail, Send, MessageSquare, Clock, CheckCircle2, ChevronRight, User as UserIcon, ShieldAlert, Paperclip, Image as ImageIcon, X, Reply, Camera, FileImage, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/contexts/AuthContext";
@@ -39,9 +40,12 @@ export default function Contact() {
   const [replyMessage, setReplyMessage] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [replyingTo, setReplyingTo] = useState<any | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (profile?.full_name) setName(profile.full_name);
@@ -145,11 +149,16 @@ export default function Contact() {
     try {
       let attachment_url = null;
       if (attachment) {
-        if (attachment.size > 20 * 1024 * 1024) {
-          throw new Error("File size must be less than 20MB");
+        if (attachment.size > 5 * 1024 * 1024) {
+          throw new Error("File size must be less than 5MB");
+        }
+        const invalidTypes = ['.exe', '.js', '.php', '.html', '.bat', '.sh'];
+        const fileNameOriginal = attachment.name.toLowerCase();
+        if (invalidTypes.some(ext => fileNameOriginal.endsWith(ext))) {
+          throw new Error("Invalid file type");
         }
         const fileExt = attachment.name.split('.').pop();
-        const fileName = `${Math.random()}.${fileExt}`;
+        const fileName = `${crypto.randomUUID()}.${fileExt}`;
         const filePath = `${selectedTicket.id}/${fileName}`;
         const { error: uploadError } = await supabase.storage.from('support_attachments').upload(filePath, attachment);
         if (uploadError) throw uploadError;
@@ -164,11 +173,13 @@ export default function Contact() {
           sender_type: 'user',
           sender_id: user.id,
           message: replyMessage,
-          attachment_url
+          attachment_url,
+          reply_to_id: replyingTo?.id || null
         });
       if (error) throw error;
       setReplyMessage("");
       setAttachment(null);
+      setReplyingTo(null);
     } catch (error: any) {
       toast({ title: "Failed to send reply", description: error.message, variant: "destructive" });
     } finally {
@@ -331,23 +342,55 @@ export default function Contact() {
                   <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {messages.map((msg: any) => {
                       const isUser = msg.sender_type === 'user';
+                      const replyToMsg = msg.reply_to_id ? messages.find(m => m.id === msg.reply_to_id) : null;
                       return (
-                        <div key={msg.id} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <div key={msg.id} id={`msg-${msg.id}`} className={`flex gap-3 group ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                           <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${isUser ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground'}`}>
                             {isUser ? <UserIcon className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
                           </div>
-                          <div className={`max-w-[75%] rounded-2xl p-3 text-sm ${isUser ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm'}`}>
-                            {msg.attachment_url && (
-                              <div className="mb-2 rounded-lg overflow-hidden border border-white/20">
-                                <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
-                                  <img src={msg.attachment_url} alt="Attachment" className="max-h-60 w-auto object-cover hover:opacity-90 transition-opacity" />
-                                </a>
-                              </div>
+                          <div className="flex items-center gap-2 max-w-[75%]">
+                            {isUser && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 shrink-0"
+                                onClick={() => setReplyingTo(msg)}
+                              >
+                                <Reply className="h-4 w-4" />
+                              </Button>
                             )}
-                            {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
-                            <p className={`text-[10px] mt-1 text-right ${isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
+                            <div className={`w-full rounded-2xl p-3 text-sm ${isUser ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm'}`}>
+                              {replyToMsg && (
+                                <div 
+                                  className="mb-2 p-2 rounded bg-black/10 cursor-pointer hover:bg-black/20 transition-colors text-xs border-l-2 border-primary"
+                                  onClick={() => document.getElementById(`msg-${msg.reply_to_id}`)?.scrollIntoView({ behavior: 'smooth' })}
+                                >
+                                  <p className="font-semibold">{replyToMsg.sender_type === 'user' ? 'You' : 'Admin'}</p>
+                                  <p className="line-clamp-1 opacity-80">{replyToMsg.message || "Attachment"}</p>
+                                </div>
+                              )}
+                              {msg.attachment_url && (
+                                <div className="mb-2 rounded-lg overflow-hidden border border-white/20">
+                                  <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
+                                    <img src={msg.attachment_url} alt="Attachment" className="max-h-60 w-auto object-cover hover:opacity-90 transition-opacity" />
+                                  </a>
+                                </div>
+                              )}
+                              {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
+                              <p className={`text-[10px] mt-1 text-right ${isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                            {!isUser && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 shrink-0"
+                                onClick={() => setReplyingTo(msg)}
+                              >
+                                <Reply className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
@@ -357,9 +400,30 @@ export default function Contact() {
                   
                   {selectedTicket.status === 'open' ? (
                     <div className="p-3 border-t border-border bg-background shrink-0 flex flex-col gap-2">
+                      {replyingTo && (
+                        <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg border-l-4 border-primary text-sm mb-2">
+                          <div className="flex flex-col overflow-hidden">
+                            <span className="font-semibold text-primary text-xs">
+                              Replying to {replyingTo.sender_type === 'user' ? 'You' : 'Admin'}
+                            </span>
+                            <span className="text-muted-foreground truncate">
+                              {replyingTo.message || "Attachment"}
+                            </span>
+                          </div>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setReplyingTo(null)}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
                       {attachment && (
                         <div className="relative inline-block w-fit">
-                          <img src={URL.createObjectURL(attachment)} alt="Preview" className="h-20 w-auto rounded border border-border object-cover" />
+                          {attachment.type.startsWith('image/') ? (
+                            <img src={URL.createObjectURL(attachment)} alt="Preview" className="h-20 w-auto rounded border border-border object-cover" />
+                          ) : (
+                            <div className="h-20 w-20 flex items-center justify-center rounded border border-border bg-muted">
+                              <FileText className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                          )}
                           <button 
                             type="button" 
                             onClick={() => setAttachment(null)} 
@@ -379,26 +443,66 @@ export default function Contact() {
                         />
                         <input
                           type="file"
-                          accept="image/jpeg,image/png,image/webp"
+                          accept="image/*"
+                          capture="environment"
                           className="hidden"
-                          ref={fileInputRef}
+                          ref={cameraInputRef}
                           onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              setAttachment(e.target.files[0]);
-                            }
+                            if (e.target.files && e.target.files[0]) setAttachment(e.target.files[0]);
                           }}
                         />
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          size="icon"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={replyLoading}
-                        >
-                          <Paperclip className="h-4 w-4" />
-                        </Button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          ref={galleryInputRef}
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) setAttachment(e.target.files[0]);
+                          }}
+                        />
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="hidden"
+                          ref={documentInputRef}
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) setAttachment(e.target.files[0]);
+                          }}
+                        />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              size="icon"
+                              disabled={replyLoading || messages.filter(m => m.attachment_url).length >= 5}
+                              onClick={(e) => {
+                                if (messages.filter(m => m.attachment_url).length >= 5) {
+                                  e.preventDefault();
+                                  toast({ title: "Attachment limit reached", description: "Maximum 5 attachments allowed per support ticket." });
+                                }
+                              }}
+                            >
+                              <Paperclip className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => cameraInputRef.current?.click()}>
+                              <Camera className="mr-2 h-4 w-4" />
+                              <span>Camera</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => galleryInputRef.current?.click()}>
+                              <FileImage className="mr-2 h-4 w-4" />
+                              <span>Gallery</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
+                              <FileText className="mr-2 h-4 w-4" />
+                              <span>Files / Documents</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button type="submit" size="icon" disabled={replyLoading || (!replyMessage.trim() && !attachment)}>
-                          <Send className="h-4 w-4" />
+                          {replyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                         </Button>
                       </form>
                     </div>

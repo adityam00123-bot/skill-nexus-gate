@@ -3,8 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MessageCircle, CheckCircle, Clock, Send, AlertCircle, Search, User, Paperclip, Image as ImageIcon, X } from "lucide-react";
+import { MessageCircle, CheckCircle, Clock, Send, AlertCircle, Search, User, Paperclip, Image as ImageIcon, X, Reply, Camera, FileImage, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -31,9 +32,11 @@ interface SupportMessage {
   id: string;
   ticket_id: string;
   sender_type: string;
+  sender_id?: string;
   message: string;
   created_at: string;
   attachment_url?: string | null;
+  reply_to_id?: string | null;
 }
 
 export default function AdminSupport() {
@@ -46,11 +49,14 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [replyingTo, setReplyingTo] = useState<SupportMessage | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
 
   const fetchTickets = async () => {
     try {
@@ -133,6 +139,28 @@ export default function AdminSupport() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const attachmentCount = messages.filter(m => m.attachment_url).length;
+      if (attachmentCount >= 5) {
+        toast({ title: "Limit reached", description: "Maximum 5 attachments allowed per support ticket.", variant: "destructive" });
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ title: "File too large", description: "File size must be less than 5MB.", variant: "destructive" });
+        return;
+      }
+      const invalidTypes = ['application/x-msdownload', 'application/javascript', 'text/javascript', 'application/x-php', 'text/html', 'application/x-sh'];
+      if (invalidTypes.includes(file.type) || file.name.match(/\.(exe|js|php|html|sh|bat)$/i)) {
+        toast({ title: "Invalid file", description: "This file type is not allowed.", variant: "destructive" });
+        return;
+      }
+      setAttachment(file);
+    }
+    e.target.value = '';
+  };
+
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!replyText.trim() && !attachment) || !selectedTicket) return;
@@ -142,11 +170,11 @@ export default function AdminSupport() {
       let attachment_url = null;
 
       if (attachment) {
-        if (attachment.size > 20 * 1024 * 1024) {
-          throw new Error("File size must be less than 20MB");
+        if (attachment.size > 5 * 1024 * 1024) {
+          throw new Error("File size must be less than 5MB");
         }
         const fileExt = attachment.name.split('.').pop();
-        const fileName = `${Math.random()}.${fileExt}`;
+        const fileName = `${crypto.randomUUID()}.${fileExt}`;
         const filePath = `${selectedTicket.id}/${fileName}`;
         
         const { error: uploadError } = await supabase.storage
@@ -169,7 +197,8 @@ export default function AdminSupport() {
           sender_type: 'admin',
           sender_id: user?.id,
           message: replyText.trim(),
-          attachment_url
+          attachment_url,
+          reply_to_id: replyingTo?.id || null
         });
 
       if (error) throw error;
@@ -182,6 +211,7 @@ export default function AdminSupport() {
 
       setReplyText("");
       setAttachment(null);
+      setReplyingTo(null);
       fetchTickets(); // Refresh tickets to update sorting/timestamps
     } catch (err: any) {
       console.error(err);
@@ -325,8 +355,16 @@ export default function AdminSupport() {
               ) : (
                 messages.map((msg) => {
                   const isAdmin = msg.sender_type === 'admin';
+                  const repliedToMsg = msg.reply_to_id ? messages.find(m => m.id === msg.reply_to_id) : null;
                   return (
-                    <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                    <div key={msg.id} id={`msg-${msg.id}`} className={`flex group ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                      {isAdmin && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center pr-2">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full" onClick={() => setReplyingTo(msg)}>
+                            <Reply className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      )}
                       <div className={`flex max-w-[75%] gap-3 ${isAdmin ? 'flex-row-reverse' : 'flex-row'}`}>
                         <Avatar className="h-8 w-8 shrink-0 mt-auto">
                           <AvatarFallback className={isAdmin ? 'bg-primary text-primary-foreground text-xs' : 'bg-muted text-muted-foreground text-xs'}>
@@ -335,11 +373,24 @@ export default function AdminSupport() {
                         </Avatar>
                         <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
                           <div className={cn(
-                            "px-4 py-2 rounded-2xl",
+                            "px-4 py-2 rounded-2xl flex flex-col",
                             isAdmin 
                               ? "bg-primary text-primary-foreground rounded-br-sm" 
                               : "bg-[#1E293B] border border-[#334155] text-foreground rounded-bl-sm"
                           )}>
+                            {repliedToMsg && (
+                              <div 
+                                onClick={() => document.getElementById(`msg-${repliedToMsg.id}`)?.scrollIntoView({ behavior: 'smooth' })}
+                                className="mb-2 p-2 rounded bg-black/10 hover:bg-black/20 cursor-pointer text-xs border-l-2 border-primary-foreground/50 transition-colors"
+                              >
+                                <div className="font-semibold opacity-80 mb-1">
+                                  {repliedToMsg.sender_type === 'admin' ? 'Admin' : (selectedTicket.profiles?.full_name || 'User')}
+                                </div>
+                                <div className="opacity-90 line-clamp-1">
+                                  {repliedToMsg.message || (repliedToMsg.attachment_url ? 'Attachment' : '')}
+                                </div>
+                              </div>
+                            )}
                             {msg.attachment_url && (
                               <img 
                                 src={msg.attachment_url} 
@@ -354,6 +405,13 @@ export default function AdminSupport() {
                           </span>
                         </div>
                       </div>
+                      {!isAdmin && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center pl-2">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full" onClick={() => setReplyingTo(msg)}>
+                            <Reply className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -363,7 +421,22 @@ export default function AdminSupport() {
 
             {/* Input Form */}
             {selectedTicket.status !== 'resolved' ? (
-              <form onSubmit={handleSendReply} className="p-4 border-t border-[#334155] bg-[#0F172A] flex flex-col gap-2">
+              <div className="p-4 border-t border-[#334155] bg-[#0F172A] flex flex-col gap-2 relative">
+                {replyingTo && (
+                  <div className="flex items-center justify-between p-2 mb-2 bg-[#1E293B] border-l-2 border-primary rounded-r text-sm">
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-primary text-xs">
+                        {replyingTo.sender_type === 'admin' ? 'Replying to Admin' : `Replying to ${selectedTicket.profiles?.full_name || 'User'}`}
+                      </span>
+                      <span className="text-muted-foreground truncate max-w-[300px]">
+                        {replyingTo.message || (replyingTo.attachment_url ? 'Attachment' : '')}
+                      </span>
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setReplyingTo(null)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
                 {attachment && (
                   <div className="relative w-20 h-20 mb-2">
                     <img 
@@ -380,27 +453,59 @@ export default function AdminSupport() {
                     </button>
                   </div>
                 )}
-                <div className="flex gap-2">
+                <form onSubmit={handleSendReply} className="flex gap-2">
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept="image/*"
+                    capture="environment"
                     className="hidden"
-                    ref={fileInputRef}
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setAttachment(e.target.files[0]);
-                      }
-                    }}
+                    ref={cameraInputRef}
+                    onChange={handleFileSelect}
                   />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="icon"
-                    className="shrink-0 bg-[#1E293B] border-[#334155]"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Paperclip className="h-4 w-4" />
-                  </Button>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    ref={galleryInputRef}
+                    onChange={handleFileSelect}
+                  />
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    ref={documentInputRef}
+                    onChange={handleFileSelect}
+                  />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        className="shrink-0 bg-[#1E293B] border-[#334155]"
+                        onClick={(e) => {
+                          const attachmentCount = messages.filter(m => m.attachment_url).length;
+                          if (attachmentCount >= 5) {
+                            e.preventDefault();
+                            toast({ description: "Maximum 5 attachments allowed per support ticket.", variant: "destructive" });
+                          }
+                        }}
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="bg-[#1E293B] border-[#334155]">
+                      <DropdownMenuItem onClick={() => cameraInputRef.current?.click()} className="cursor-pointer gap-2">
+                        <Camera className="h-4 w-4" /> Camera
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => galleryInputRef.current?.click()} className="cursor-pointer gap-2">
+                        <FileImage className="h-4 w-4" /> Gallery
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => documentInputRef.current?.click()} className="cursor-pointer gap-2">
+                        <FileText className="h-4 w-4" /> Files / Documents
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Input
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
@@ -409,11 +514,11 @@ export default function AdminSupport() {
                     disabled={sending}
                   />
                   <Button type="submit" disabled={sending || (!replyText.trim() && !attachment)}>
-                    <Send className="h-4 w-4 mr-2" />
+                    {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                     {sending ? "Sending" : "Send"}
                   </Button>
-                </div>
-              </form>
+                </form>
+              </div>
             ) : (
               <div className="p-4 border-t border-[#334155] bg-[#0F172A]/50 text-center text-muted-foreground flex items-center justify-center gap-2 text-sm">
                 <AlertCircle className="h-4 w-4" /> This ticket is resolved. Reopen it to send more messages.
