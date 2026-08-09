@@ -142,11 +142,7 @@ export default function AdminSupport() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const attachmentCount = messages.filter(m => m.attachment_url).length;
-      if (attachmentCount >= 5) {
-        toast({ title: "Limit reached", description: "Maximum 5 attachments allowed per support ticket.", variant: "destructive" });
-        return;
-      }
+
       if (file.size > 5 * 1024 * 1024) {
         toast({ title: "File too large", description: "File size must be less than 5MB.", variant: "destructive" });
         return;
@@ -483,13 +479,6 @@ export default function AdminSupport() {
                         variant="outline" 
                         size="icon"
                         className="shrink-0 bg-[#1E293B] border-[#334155]"
-                        onClick={(e) => {
-                          const attachmentCount = messages.filter(m => m.attachment_url).length;
-                          if (attachmentCount >= 5) {
-                            e.preventDefault();
-                            toast({ description: "Maximum 5 attachments allowed per support ticket.", variant: "destructive" });
-                          }
-                        }}
                       >
                         <Paperclip className="h-4 w-4" />
                       </Button>
