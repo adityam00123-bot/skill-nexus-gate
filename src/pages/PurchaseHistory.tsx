@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Receipt, ExternalLink, ShoppingBag, Crown } from "lucide-react";
+import { Receipt, ExternalLink, ShoppingBag, Crown, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
 import CategoryBar from "@/components/CategoryBar";
@@ -159,25 +159,32 @@ const PurchaseHistory = () => {
             </Link>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {allPurchases.map((p: any) => {
               if (p.is_subscription) {
                 return (
-                  <div key={p.id} className="bg-card rounded-xl border border-border p-4 flex gap-4 items-center">
-                    <div className="shrink-0 w-28 h-18 bg-amber-100/20 rounded-lg flex items-center justify-center border border-amber-200/50">
-                      <Crown className="h-6 w-6 text-amber-500" />
+                  <div key={p.id} className="bg-card rounded-2xl border border-border/50 p-5 flex flex-col sm:flex-row gap-5 items-start sm:items-center shadow-sm hover:shadow-md transition-all hover:border-border group">
+                    <div className="shrink-0 w-24 h-24 sm:w-32 sm:h-24 bg-gradient-to-br from-amber-500/20 to-amber-600/10 rounded-xl flex items-center justify-center border border-amber-500/20 shadow-inner group-hover:scale-[1.02] transition-transform">
+                      <Crown className="h-10 w-10 text-amber-500 drop-shadow-sm" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-foreground line-clamp-1 flex items-center gap-2">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <h3 className="font-display font-semibold text-lg text-foreground line-clamp-1 flex items-center gap-2">
                         {p.course_title} <Crown className="h-4 w-4 text-amber-500" />
                       </h3>
-                      <p className="text-xs text-muted-foreground mt-1">by {p.instructor}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm text-muted-foreground font-medium">Subscription Plan</p>
+                      <p className="text-xs text-muted-foreground/80 pt-1">
                         Purchased on {new Date(p.created_at).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}
                       </p>
                     </div>
-                    <div className="text-right shrink-0 space-y-2">
-                      <p className="font-display font-bold text-foreground">₹{p.price_paid}</p>
+                    <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center w-full sm:w-auto gap-4 sm:gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-border/50">
+                      <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-bold shadow-sm">
+                        ₹{p.price_paid}
+                      </div>
+                      <Link to="/billing">
+                        <Button size="sm" variant="default" className="w-full sm:w-auto gap-2 text-xs font-semibold shadow-sm hover:shadow">
+                          <Settings className="h-3.5 w-3.5" /> Manage
+                        </Button>
+                      </Link>
                     </div>
                   </div>
                 );
@@ -188,18 +195,21 @@ const PurchaseHistory = () => {
               
               if (!courseData) {
                 return (
-                  <div key={p.id} className="bg-card rounded-xl border border-border p-4 flex gap-4 items-center">
-                    <div className="shrink-0 w-28 h-18 bg-muted rounded-lg flex items-center justify-center">
-                      <ShoppingBag className="h-6 w-6 text-muted-foreground/50" />
+                  <div key={p.id} className="bg-card rounded-2xl border border-border/50 p-5 flex flex-col sm:flex-row gap-5 items-start sm:items-center shadow-sm">
+                    <div className="shrink-0 w-24 h-24 sm:w-32 sm:h-24 bg-muted/50 rounded-xl flex items-center justify-center border border-border/50 shadow-inner">
+                      <ShoppingBag className="h-10 w-10 text-muted-foreground/40" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-foreground line-clamp-1">Unknown Course ({p.course_id})</h3>
-                      <p className="text-xs text-muted-foreground">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <h3 className="font-display font-semibold text-lg text-foreground line-clamp-1">Unknown Course</h3>
+                      <p className="text-sm text-muted-foreground font-mono text-xs">{p.course_id}</p>
+                      <p className="text-xs text-muted-foreground/80 pt-1">
                         Purchased on {new Date(p.created_at).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}
                       </p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-display font-bold text-foreground">₹{p.price_paid}</p>
+                    <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center w-full sm:w-auto gap-4 sm:gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-border/50">
+                      <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-bold shadow-sm">
+                        ₹{p.price_paid}
+                      </div>
                     </div>
                   </div>
                 );
@@ -211,33 +221,36 @@ const PurchaseHistory = () => {
               const telegramLink = (courseData as any).telegram_link || (courseData as any).telegramLink;
 
               return (
-                <div key={p.id} className="bg-card rounded-xl border border-border p-4 flex gap-4 items-center">
-                  <div className="shrink-0">
+                <div key={p.id} className="bg-card rounded-2xl border border-border/50 p-5 flex flex-col sm:flex-row gap-5 items-start sm:items-center shadow-sm hover:shadow-md transition-all hover:border-border group">
+                  <div className="shrink-0 w-24 h-24 sm:w-32 sm:h-24 rounded-xl overflow-hidden shadow-inner border border-border/50 group-hover:shadow-md transition-shadow relative">
                     {thumbnail ? (
-                      <Link to={`/course/${p.course_id}`}>
-                        <img src={thumbnail} alt={title} className="w-28 h-18 object-cover rounded-lg" />
+                      <Link to={`/course/${p.course_id}`} className="block w-full h-full">
+                        <img src={thumbnail} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors"></div>
                       </Link>
                     ) : (
-                      <div className="w-28 h-18 bg-muted rounded-lg flex items-center justify-center">
-                        <ShoppingBag className="h-6 w-6 text-muted-foreground/50" />
+                      <div className="w-full h-full bg-muted/50 flex items-center justify-center">
+                        <ShoppingBag className="h-10 w-10 text-muted-foreground/40" />
                       </div>
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 space-y-1">
                     <Link to={`/course/${p.course_id}`}>
-                      <h3 className="font-semibold text-foreground line-clamp-1 hover:text-primary transition-colors">{title}</h3>
+                      <h3 className="font-display font-semibold text-lg text-foreground line-clamp-1 hover:text-primary transition-colors">{title}</h3>
                     </Link>
-                    <p className="text-xs text-muted-foreground mt-1">by {instructor}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground font-medium">by {instructor}</p>
+                    <p className="text-xs text-muted-foreground/80 pt-1">
                       Purchased on {new Date(p.created_at).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}
                     </p>
                   </div>
-                  <div className="text-right shrink-0 space-y-2">
-                    <p className="font-display font-bold text-foreground">₹{p.price_paid}</p>
+                  <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center w-full sm:w-auto gap-4 sm:gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-border/50">
+                    <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-bold shadow-sm">
+                      ₹{p.price_paid}
+                    </div>
                     {telegramLink && (
-                      <a href={telegramLink} target="_blank" rel="noopener noreferrer">
-                        <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                          <ExternalLink className="h-3 w-3" /> Access
+                      <a href={telegramLink} target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto">
+                        <Button size="sm" variant="outline" className="w-full gap-2 text-xs font-semibold shadow-sm hover:shadow hover:bg-primary/5 hover:text-primary hover:border-primary/30 transition-all">
+                          <ExternalLink className="h-3.5 w-3.5" /> Access
                         </Button>
                       </a>
                     )}
