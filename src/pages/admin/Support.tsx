@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import CameraCapture from "@/components/CameraCapture";
 
 interface Profile {
   full_name: string | null;
@@ -50,6 +51,7 @@ export default function AdminSupport() {
   const [searchQuery, setSearchQuery] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [replyingTo, setReplyingTo] = useState<SupportMessage | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
   
@@ -453,14 +455,6 @@ export default function AdminSupport() {
                   <input
                     type="file"
                     accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    ref={cameraInputRef}
-                    onChange={handleFileSelect}
-                  />
-                  <input
-                    type="file"
-                    accept="image/*"
                     className="hidden"
                     ref={galleryInputRef}
                     onChange={handleFileSelect}
@@ -484,7 +478,7 @@ export default function AdminSupport() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="bg-[#1E293B] border-[#334155]">
-                      <DropdownMenuItem onClick={() => cameraInputRef.current?.click()} className="cursor-pointer gap-2">
+                      <DropdownMenuItem onClick={() => setIsCameraOpen(true)} className="cursor-pointer gap-2">
                         <Camera className="h-4 w-4" /> Camera
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => galleryInputRef.current?.click()} className="cursor-pointer gap-2">
@@ -507,6 +501,12 @@ export default function AdminSupport() {
                     {sending ? "Sending" : "Send"}
                   </Button>
                 </form>
+                
+                <CameraCapture 
+                  isOpen={isCameraOpen} 
+                  onClose={() => setIsCameraOpen(false)} 
+                  onCapture={(file) => setAttachment(file)} 
+                />
               </div>
             ) : (
               <div className="p-4 border-t border-[#334155] bg-[#0F172A]/50 text-center text-muted-foreground flex items-center justify-center gap-2 text-sm">

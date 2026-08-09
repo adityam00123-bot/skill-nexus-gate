@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import CameraCapture from "@/components/CameraCapture";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,6 +42,7 @@ export default function Contact() {
   const [replyLoading, setReplyLoading] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -442,16 +444,7 @@ export default function Contact() {
                           disabled={replyLoading}
                         />
                         <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          ref={cameraInputRef}
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) setAttachment(e.target.files[0]);
-                          }}
-                        />
-                        <input
+
                           type="file"
                           accept="image/*"
                           className="hidden"
@@ -487,7 +480,7 @@ export default function Contact() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => cameraInputRef.current?.click()}>
+                            <DropdownMenuItem onClick={() => setIsCameraOpen(true)}>
                               <Camera className="mr-2 h-4 w-4" />
                               <span>Camera</span>
                             </DropdownMenuItem>
@@ -505,6 +498,12 @@ export default function Contact() {
                           {replyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                         </Button>
                       </form>
+                      
+                      <CameraCapture 
+                        isOpen={isCameraOpen} 
+                        onClose={() => setIsCameraOpen(false)} 
+                        onCapture={(file) => setAttachment(file)} 
+                      />
                     </div>
                   ) : (
                     <div className="p-3 border-t border-border bg-muted/30 text-center shrink-0">
