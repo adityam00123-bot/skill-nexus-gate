@@ -167,7 +167,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         navigate(`/${intent}`, { replace: true });
       }
     }
-  }, [isInitializing, isAuthRoute, navigate]);
+  }, [isInitializing, isProcessingHash, isAuthRoute, navigate]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -177,30 +177,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsBlocked(false);
   };
 
-  if (isInitializing && !isAuthRoute) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center">
-        <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-6 animate-pulse shadow-lg shadow-primary/20">
-          <span className="text-primary-foreground font-bold text-2xl">CV</span>
-        </div>
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  // Prevent homepage flash if we're about to redirect based on intent
-  if (!isInitializing && !isAuthRoute && localStorage.getItem("oauth_intent")) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center">
-        <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-6 animate-pulse shadow-lg shadow-primary/20">
-          <span className="text-primary-foreground font-bold text-2xl">CV</span>
-        </div>
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  // Prevent homepage flash if we're about to redirect based on intent
+  // Prevent homepage flash if we're about to redirect based on intent, or if processing
   if ((isInitializing || isProcessingHash || localStorage.getItem("oauth_intent")) && !isAuthRoute) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center">
