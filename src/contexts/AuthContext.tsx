@@ -42,6 +42,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
   const isAuthRoute = location.pathname === "/login" || location.pathname === "/signup";
 
+  const [isProcessingHash, setIsProcessingHash] = useState(() => window.location.hash.includes("access_token"));
+
+  useEffect(() => {
+    if (isProcessingHash) {
+      const interval = setInterval(() => {
+        if (!window.location.hash.includes("access_token")) {
+          setIsProcessingHash(false);
+          clearInterval(interval);
+        }
+      }, 50);
+      return () => clearInterval(interval);
+    }
+  }, [isProcessingHash]);
+
   const [isInitializing, setIsInitializing] = useState(() => {
     try {
       for (let i = 0; i < localStorage.length; i++) {
@@ -145,9 +159,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [isAuthRoute]);
 
-  // Intercept oauth_intent after Supabase initializes, to redirect to the correct auth page
+  // Safely intercept oauth_intent after Supabase finishes initializing and hash processing
   useEffect(() => {
-    if (!isInitializing && !isAuthRoute) {
+    if (!isInitializing && !isProcessingHash && !isAuthRoute) {
       const intent = localStorage.getItem("oauth_intent");
       if (intent) {
         navigate(`/${intent}`, { replace: true });
@@ -176,6 +190,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Prevent homepage flash if we're about to redirect based on intent
   if (!isInitializing && !isAuthRoute && localStorage.getItem("oauth_intent")) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-6 animate-pulse shadow-lg shadow-primary/20">
+          <span className="text-primary-foreground font-bold text-2xl">CV</span>
+        </div>
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Prevent homepage flash if we're about to redirect based on intent
+  if ((isInitializing || isProcessingHash || localStorage.getItem("oauth_intent")) && !isAuthRoute) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center">
         <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-6 animate-pulse shadow-lg shadow-primary/20">

@@ -31,6 +31,10 @@ export default function Login() {
     const verifyAuth = async () => {
       if (!session?.user) {
         if (isMounted) setIsVerifying(false);
+        // Clear stale intent if we are not in the middle of a hash callback
+        if (!window.location.hash.includes("access_token")) {
+          localStorage.removeItem("oauth_intent");
+        }
         return;
       }
       
