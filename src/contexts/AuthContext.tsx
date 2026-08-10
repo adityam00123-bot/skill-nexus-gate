@@ -86,8 +86,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
     
-    setIsBlocked(data?.is_blocked || false);
-    setProfile(data);
+      if (data) {
+        setIsBlocked(false);
+      }
+      
+      setProfile(data);
     setLoading(false);
     setIsInitializing(false);
   };
