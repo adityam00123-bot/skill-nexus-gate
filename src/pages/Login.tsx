@@ -20,6 +20,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [needsEmailConfirmation, setNeedsEmailConfirmation] = useState(false);
+  const [resending, setResending] = useState(false);
   
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -112,6 +114,7 @@ export default function Login() {
 
     setLoading(true);
     setError(null);
+    setNeedsEmailConfirmation(false);
     
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: email.trim(),
@@ -119,10 +122,32 @@ export default function Login() {
     });
 
     if (signInError) {
-      setError(signInError.message);
+      if (signInError.message === "Email not confirmed") {
+        setError("Please confirm your email before logging in. Check your inbox for the confirmation link.");
+        setNeedsEmailConfirmation(true);
+      } else {
+        setError(signInError.message);
+      }
       setLoading(false);
     }
     // If successful, the onAuthStateChange in context will trigger the useEffect above
+  };
+
+  const handleResendConfirmation = async () => {
+    setResending(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim(),
+      options: {
+        emailRedirectTo: `${window.location.origin}/login`,
+      },
+    });
+    setResending(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Sent!", description: "A new confirmation link has been sent to your email." });
+    }
   };
 
   const handleGoogleLogin = async () => {
@@ -188,7 +213,21 @@ export default function Login() {
             {error && (
               <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription className="flex flex-col">
+                  <span>{error}</span>
+                  {needsEmailConfirmation && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleResendConfirmation} 
+                      disabled={resending}
+                      className="mt-3 w-fit text-xs bg-background/50 hover:bg-background/80 text-foreground"
+                    >
+                      {resending ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : null}
+                      Resend confirmation email
+                    </Button>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
 

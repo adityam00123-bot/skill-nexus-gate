@@ -19,6 +19,8 @@ export default function Signup() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isEmailConfirmationSent, setIsEmailConfirmationSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +125,7 @@ export default function Signup() {
     setLoading(true);
     setError(null);
     
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
@@ -134,6 +136,9 @@ export default function Signup() {
 
     if (signUpError) {
       setError(signUpError.message);
+      setLoading(false);
+    } else if (data?.user && !data.session) {
+      setIsEmailConfirmationSent(true);
       setLoading(false);
     } else {
       toast({ title: "Welcome!", description: "Your account has been created successfully." });
@@ -212,6 +217,24 @@ export default function Signup() {
               <div className="py-12 flex flex-col items-center justify-center space-y-4">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="text-sm text-muted-foreground font-medium animate-pulse">Setting up your account...</p>
+              </div>
+            ) : isEmailConfirmationSent ? (
+              <div className="py-12 flex flex-col items-center justify-center space-y-4 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-2">
+                  <Mail className="w-10 h-10 text-primary" />
+                </div>
+                <h3 className="font-display font-bold text-2xl">Check your email</h3>
+                <p className="text-muted-foreground max-w-sm">
+                  We've sent a confirmation link to <span className="font-medium text-foreground">{email}</span>. 
+                  Please check your inbox (and spam folder) to activate your account.
+                </p>
+                <Button 
+                  variant="default" 
+                  className="mt-6 w-full max-w-[200px]" 
+                  onClick={() => navigate('/login')}
+                >
+                  Go to Login
+                </Button>
               </div>
             ) : (
               <>
