@@ -15,49 +15,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Star, Plus, Pencil, Trash2, ExternalLink, Download, Upload, X, Loader2, Copy, Image as ImageIcon, Link as LinkIcon, CheckSquare, EyeOff, Eye, TrendingUp, Users, BookOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Link } from "react-router-dom";
+import { 
+  CATEGORIES, 
+  SUBCATEGORY_MAP, 
+  LEVELS, 
+  DEFAULT_LEARN, 
+  DEFAULT_REQUIREMENTS, 
+  DEFAULT_TAGS 
+} from "@/utils/courseConstants";
 
-const CATEGORIES = [
-  "Trading", "Options", "Investing", "Technical Analysis",
-  "Price Action/SMC", "Indicators & Tools", "Crypto & Forex", "Algo & AI Skills"
-];
-
-const SUBCATEGORY_MAP: Record<string, string[]> = {
-  "Trading": ["Intraday Trading", "Swing Trading", "Positional Trading", "Price Action", "Algo Trading", "Scalping", "F&O Trading"],
-  "Options": ["Options Basics", "Options Strategies", "Option Chain Analysis", "Greeks", "Hedging Strategies", "Iron Condor", "Bull Call Spread"],
-  "Investing": ["Stock Market Basics", "Fundamental Analysis", "IPO & NFO", "Portfolio Management", "Sector Analysis", "Value Investing", "Dividend Investing"],
-  "Technical Analysis": ["Candlestick Patterns", "Chart Patterns", "Support & Resistance", "Moving Averages", "RSI & MACD", "Elliott Wave", "Fibonacci"],
-  "Price Action/SMC": ["Smart Money Concepts", "Order Blocks", "Fair Value Gaps", "ICT Concepts", "Liquidity Zones", "Break of Structure"],
-  "Indicators & Tools": ["TradingView", "Screeners", "Scanners", "Amibroker", "Python for Trading", "Excel for Trading"],
-  "Crypto & Forex": ["Crypto Basics", "Bitcoin & Altcoins", "DeFi", "NFT", "Forex Basics", "Currency Pairs", "MT4/MT5 Platform"],
-  "Algo & AI Skills": ["Python Basics", "Algo Trading", "Backtesting", "AI in Trading", "Quantitative Trading"],
-};
-const LEVELS = ["Beginner", "Intermediate", "Advanced"];
-
-const DEFAULT_LEARN = [
-  "Master the fundamentals from scratch",
-  "Build real-world trading strategies",
-  "Understand risk management and position sizing",
-  "Read and analyze market charts with confidence",
-  "Develop a disciplined trading psychology",
-  "Apply advanced techniques used by professionals",
-  "Create your own personalized trading system",
-  "Access exclusive community resources and support",
-];
-
-const DEFAULT_REQUIREMENTS = [
-  "No prior experience required — we start from the basics",
-  "A computer or mobile device with internet access",
-  "A demo or real trading/demat account (guidance provided)",
-  "Willingness to practice and learn consistently",
-];
-
-const DEFAULT_TAGS = [
-  "trading",
-  "investing",
-  "stock market",
-  "beginners",
-  "technical analysis",
-];
 
 const CAT_COLORS: Record<string, string> = {
   "Trading": "bg-blue-500/20 text-blue-400",
@@ -665,7 +632,9 @@ export default function AdminCourses() {
                <Button size="sm" variant="ghost" className="h-8 px-2 text-red-500 hover:text-red-400 hover:bg-red-500/10" disabled={toggling === "bulk"} onClick={() => handleBulkAction("delete")}><Trash2 className="h-4 w-4 mr-1"/> Bulk Delete</Button>
             </div>
           )}
-          <Button onClick={() => setCsvOpen(true)} variant="outline" className="gap-2 border-[#334155]"><Upload className="h-4 w-4" /> CSV Upload</Button>
+          <Link to="/admin/bulk-import">
+            <Button variant="outline" className="gap-2 border-[#334155]"><Upload className="h-4 w-4" /> Bulk Import</Button>
+          </Link>
           <Button onClick={exportCSV} variant="outline" className="gap-2 border-[#334155]"><Download className="h-4 w-4" /> Export</Button>
           <Button onClick={openAdd} className="gap-2 bg-green-600 hover:bg-green-700 text-white"><Plus className="h-4 w-4" /> Add New Course</Button>
         </div>
