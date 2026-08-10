@@ -109,14 +109,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           (payload) => {
             if (payload.eventType === "DELETE") {
               supabase.auth.signOut().then(() => {
-                if (!isAuthRoute) window.location.href = "/";
+                const currentPath = window.location.pathname;
+                if (currentPath !== "/login" && currentPath !== "/signup") {
+                  window.location.href = "/";
+                }
               });
             } else if (payload.eventType === "UPDATE") {
               const updatedProfile = payload.new as Profile;
               setProfile(updatedProfile);
               if (updatedProfile.is_blocked) {
                 setIsBlocked(true);
-                if (!isAuthRoute) supabase.auth.signOut();
+                const currentPath = window.location.pathname;
+                if (currentPath !== "/login" && currentPath !== "/signup") {
+                  supabase.auth.signOut();
+                }
               }
             }
           }
