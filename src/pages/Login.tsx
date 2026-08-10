@@ -55,8 +55,6 @@ export default function Login() {
         // Compare two server timestamps to bypass client clock skew
         const isNewUser = Math.abs(lastSignIn - createdAt) < 15000;
 
-        localStorage.removeItem("oauth_intent");
-
         if (intent === "login" && isNewUser) {
           await supabase.rpc('delete_current_user');
           await supabase.auth.signOut();
@@ -69,8 +67,9 @@ export default function Login() {
       }
 
       // Check blocked
-      const { data } = await supabase.from("profiles").select("is_blocked").eq("id", session.user.id).single();
+      const { data } = await supabase.from("profiles").select("is_blocked").eq("id", session.user.id).maybeSingle();
       if (data?.is_blocked) {
+        localStorage.removeItem("oauth_intent");
         await supabase.auth.signOut();
         if (isMounted) {
           setError("Your account is blocked due to a violation of our terms. Please contact support.");
@@ -81,6 +80,7 @@ export default function Login() {
 
       // If passed
       if (isMounted) {
+        localStorage.removeItem("oauth_intent");
         navigate("/", { replace: true });
       }
     };
