@@ -56,8 +56,6 @@ export default function Login() {
         const isNewUser = Math.abs(lastSignIn - createdAt) < 15000;
 
         if (intent === "login" && isNewUser) {
-          await supabase.rpc('delete_current_user');
-          await supabase.auth.signOut();
           if (isMounted) {
             setError("Account not found. Please sign up first.");
             setIsVerifying(false);
@@ -67,6 +65,8 @@ export default function Login() {
               variant: "destructive"
             });
           }
+          await supabase.rpc('delete_current_user');
+          await supabase.auth.signOut();
           return;
         }
       }
@@ -79,7 +79,6 @@ export default function Login() {
 
       if (data?.is_blocked) {
         localStorage.removeItem("oauth_intent");
-        await supabase.auth.signOut();
         if (isMounted) {
           setError("Your account is blocked due to a violation of our terms. Please contact support.");
           setIsVerifying(false);
@@ -89,6 +88,7 @@ export default function Login() {
             variant: "destructive"
           });
         }
+        await supabase.auth.signOut();
         return;
       }
 

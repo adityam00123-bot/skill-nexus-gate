@@ -58,7 +58,6 @@ export default function Signup() {
         const isNewUser = Math.abs(lastSignIn - createdAt) < 15000;
 
         if (intent === "signup" && !isNewUser) {
-          await supabase.auth.signOut();
           if (isMounted) {
             setError("User already exists. Please login to continue.");
             setIsVerifying(false);
@@ -68,6 +67,7 @@ export default function Signup() {
               variant: "destructive"
             });
           }
+          await supabase.auth.signOut();
           return;
         }
       }
@@ -80,7 +80,6 @@ export default function Signup() {
 
       if (data?.is_blocked) {
         localStorage.removeItem("oauth_intent");
-        await supabase.auth.signOut();
         if (isMounted) {
           setError("Your account is blocked due to a violation of our terms. Please contact support.");
           setIsVerifying(false);
@@ -90,6 +89,7 @@ export default function Signup() {
             variant: "destructive"
           });
         }
+        await supabase.auth.signOut();
         return;
       }
 

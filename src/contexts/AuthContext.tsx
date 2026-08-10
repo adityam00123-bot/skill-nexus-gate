@@ -77,10 +77,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       const currentPath = window.location.pathname;
       const onAuthPage = currentPath === "/login" || currentPath === "/signup";
-      const intent = localStorage.getItem("oauth_intent");
-      
-      if (data?.is_blocked && !onAuthPage && !intent) {
+      if (data?.is_blocked) {
         setIsBlocked(true);
+        localStorage.removeItem("oauth_intent");
         await supabase.auth.signOut();
         setLoading(false);
         setIsInitializing(false);
@@ -199,7 +198,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  if (isBlocked && !isAuthRoute) {
+  if (isBlocked) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="bg-card border border-border rounded-2xl p-8 max-w-md w-full text-center shadow-lg">
