@@ -1,10 +1,9 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
-import AuthModal from "@/components/AuthModal";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLocation } from "react-router-dom";
 
 interface Profile {
   full_name: string | null;
@@ -19,10 +18,6 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  isAuthModalOpen: boolean;
-  setAuthModalOpen: (open: boolean) => void;
-  authModalView: "login" | "signup";
-  setAuthModalView: (view: "login" | "signup") => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -32,10 +27,6 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: async () => {},
   refreshProfile: async () => {},
-  isAuthModalOpen: false,
-  setAuthModalOpen: () => {},
-  authModalView: "login",
-  setAuthModalView: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -44,30 +35,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  
-  // UI States
-  const [isAuthModalOpen, setAuthModalOpen] = useState(false);
-  const [authModalView, setAuthModalView] = useState<"login" | "signup">("login");
   const [isBlocked, setIsBlocked] = useState(false);
-  
-  // Loading gates
   const [loading, setLoading] = useState(true);
   
-  // Check if there's any supabase token in localStorage before React renders
-  // This helps us show a full screen loader instead of the public site flashing
+  const location = useLocation();
+  const isAuthRoute = location.pathname === "/login" || location.pathname === "/signup";
+
   const [isInitializing, setIsInitializing] = useState(() => {
     try {
-      // Find any key in localStorage matching sb-*-auth-token
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
-          return true; // We likely have a session, show loading gate
+          return true; 
         }
       }
-    } catch (e) {
-      // Ignore
-    }
-    return false; // No session apparent, let public site load instantly
+    } catch (e) {}
+    return false;
   });
 
   const fetchProfile = async (userId: string) => {
@@ -77,7 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .eq("id", userId)
       .maybeSingle();
     
-    if (data?.is_blocked) {
+    if (data?.is_blocked && !isAuthRoute) {
       setIsBlocked(true);
       await supabase.auth.signOut();
       setLoading(false);
@@ -85,7 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     
-    setIsBlocked(false);
+    setIsBlocked(data?.is_blocked || false);
     setProfile(data);
     setLoading(false);
     setIsInitializing(false);
@@ -96,40 +79,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await fetchProfile(user.id);
     }
   }, [user]);
-
-  const checkOAuthIntent = async (currentUser: User) => {
-    const intent = localStorage.getItem("oauth_intent");
-    if (!intent) return true;
-
-    const createdAt = new Date(currentUser.created_at).getTime();
-    const lastSignIn = new Date(currentUser.last_sign_in_at || currentUser.created_at).getTime();
-    const isNewUser = Math.abs(lastSignIn - createdAt) < 15000; // within 15 seconds
-
-    localStorage.removeItem("oauth_intent");
-
-    if (intent === "login" && isNewUser) {
-      await supabase.rpc('delete_current_user');
-      await supabase.auth.signOut();
-      toast({
-        title: "Account not found",
-        description: "Please sign up first before logging in.",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    if (intent === "signup" && !isNewUser) {
-      await supabase.auth.signOut();
-      toast({
-        title: "User already exists",
-        description: "Please use the Login button instead.",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    return true;
-  };
 
   useEffect(() => {
     let profileSubscription: any = null;
@@ -145,14 +94,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           (payload) => {
             if (payload.eventType === "DELETE") {
               supabase.auth.signOut().then(() => {
-                window.location.href = "/";
+                if (!isAuthRoute) window.location.href = "/";
               });
             } else if (payload.eventType === "UPDATE") {
               const updatedProfile = payload.new as Profile;
               setProfile(updatedProfile);
               if (updatedProfile.is_blocked) {
                 setIsBlocked(true);
-                supabase.auth.signOut();
+                if (!isAuthRoute) supabase.auth.signOut();
               }
             }
           }
@@ -162,19 +111,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        if (session?.user) {
-          const isValid = await checkOAuthIntent(session.user);
-          if (!isValid) {
-            setSession(null);
-            setUser(null);
-            setLoading(false);
-            setIsInitializing(false);
-            return;
-          }
-        }
-        
         setSession(session);
         setUser(session?.user ?? null);
+        
         if (session?.user) {
           setTimeout(() => fetchProfile(session.user.id), 0);
           setupProfileSubscription(session.user.id);
@@ -188,17 +127,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const isValid = await checkOAuthIntent(session.user);
-        if (!isValid) {
-          setSession(null);
-          setUser(null);
-          setLoading(false);
-          setIsInitializing(false);
-          return;
-        }
-      }
-
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -214,7 +142,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       subscription.unsubscribe();
       if (profileSubscription) supabase.removeChannel(profileSubscription);
     };
-  }, []);
+  }, [isAuthRoute]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -224,8 +152,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsBlocked(false);
   };
 
-  // 1. Loading Gate
-  if (isInitializing) {
+  if (isInitializing && !isAuthRoute) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center">
         <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-6 animate-pulse shadow-lg shadow-primary/20">
@@ -236,8 +163,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  // 2. Blocked Screen
-  if (isBlocked) {
+  if (isBlocked && !isAuthRoute) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="bg-card border border-border rounded-2xl p-8 max-w-md w-full text-center shadow-lg">
@@ -270,18 +196,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       profile, 
       loading, 
       signOut, 
-      refreshProfile,
-      isAuthModalOpen,
-      setAuthModalOpen,
-      authModalView,
-      setAuthModalView
+      refreshProfile
     }}>
       {children}
-      <AuthModal 
-        isOpen={isAuthModalOpen} 
-        onClose={() => setAuthModalOpen(false)} 
-        defaultView={authModalView}
-      />
     </AuthContext.Provider>
   );
 };
