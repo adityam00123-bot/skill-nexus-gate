@@ -48,8 +48,14 @@ export default function Signup() {
       // Check intent
       const intent = localStorage.getItem("oauth_intent");
       if (intent) {
-        const createdAt = new Date(session.user.created_at).getTime();
-        const isNewUser = Math.abs(Date.now() - createdAt) < 30000;
+        // Fetch fresh user to get accurate server-side last_sign_in_at
+        const { data: { user: freshUser } } = await supabase.auth.getUser();
+        const userToCheck = freshUser || session.user;
+        
+        const createdAt = new Date(userToCheck.created_at).getTime();
+        const lastSignIn = new Date(userToCheck.last_sign_in_at || userToCheck.created_at).getTime();
+        // Compare two server timestamps to bypass client clock skew
+        const isNewUser = Math.abs(lastSignIn - createdAt) < 15000;
 
         localStorage.removeItem("oauth_intent");
 
