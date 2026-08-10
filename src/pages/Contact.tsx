@@ -301,28 +301,36 @@ export default function Contact() {
           </Card>
           
           {/* User Tickets Section */}
-          {user && tickets.length > 0 && (
+          {user && (
             <div className="space-y-6">
               <h2 className="font-display font-bold text-2xl text-foreground mb-4">Your Queries</h2>
               
               {!selectedTicket ? (
                 <div className="space-y-3">
-                  {tickets.map(ticket => (
-                    <Card key={ticket.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setSelectedTicket(ticket)}>
-                      <CardContent className="p-4 flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-3 mb-1">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${ticket.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                              {ticket.status.toUpperCase()}
-                            </span>
-                            <h3 className="font-semibold text-foreground">{ticket.topic}</h3>
+                  {tickets.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground bg-muted/20 rounded-xl border border-dashed border-border">
+                      <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                      <p>You haven't submitted any queries yet.</p>
+                      <p className="text-sm mt-1">Use the form above to send us a message.</p>
+                    </div>
+                  ) : (
+                    tickets.map(ticket => (
+                      <Card key={ticket.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setSelectedTicket(ticket)}>
+                        <CardContent className="p-4 flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-3 mb-1">
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${ticket.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {ticket.status.toUpperCase()}
+                              </span>
+                              <h3 className="font-semibold text-foreground">{ticket.topic}</h3>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Updated {formatRelativeTime(ticket.updated_at)}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground">Updated {formatRelativeTime(ticket.updated_at)}</p>
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                      </CardContent>
-                    </Card>
-                  ))}
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
                 </div>
               ) : (
                 <Card className="flex flex-col h-[500px] border-border overflow-hidden">

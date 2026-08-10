@@ -77,7 +77,7 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, setTheme } = useTheme();
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, setAuthModalOpen, setAuthModalView } = useAuth();
   const { cartCount } = useCartContext();
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearNotification, clearAll } = useNotifications();
   const { isAdmin } = useAdmin();
@@ -407,18 +407,23 @@ const Navbar = () => {
             </>
           ) : (
             <div className="hidden md:flex items-center gap-2 ml-2">
-              <Link to="/login">
-                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground gap-1.5 text-sm font-medium">
-                  <LogIn className="h-4 w-4" />
-                  Login
-                </Button>
-              </Link>
-              <Link to="/signup">
-                <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 text-sm font-medium">
-                  <UserPlus className="h-4 w-4" />
-                  Sign Up
-                </Button>
-              </Link>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => { setAuthModalView("login"); setAuthModalOpen(true); }}
+                className="text-muted-foreground hover:text-foreground gap-1.5 text-sm font-medium"
+              >
+                <LogIn className="h-4 w-4" />
+                Login
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={() => { setAuthModalView("signup"); setAuthModalOpen(true); }}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 text-sm font-medium"
+              >
+                <UserPlus className="h-4 w-4" />
+                Sign Up
+              </Button>
             </div>
           )}
 
@@ -452,8 +457,8 @@ const Navbar = () => {
               <>
                 <Link to="/free-learning" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 rounded-md text-foreground hover:bg-muted transition-colors text-sm font-medium">Free Learning</Link>
                 <Link to="/subscribe" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 rounded-md text-foreground hover:bg-muted transition-colors text-sm font-medium">Subscribe</Link>
-                <Link to="/login" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 rounded-md text-foreground hover:bg-muted transition-colors text-sm font-medium">Login</Link>
-                <Link to="/signup" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 rounded-md text-primary font-semibold hover:bg-muted transition-colors text-sm">Sign Up</Link>
+                <button onClick={() => { setMobileOpen(false); setAuthModalView("login"); setAuthModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-md text-foreground hover:bg-muted transition-colors text-sm font-medium">Login</button>
+                <button onClick={() => { setMobileOpen(false); setAuthModalView("signup"); setAuthModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-md text-primary font-semibold hover:bg-muted transition-colors text-sm">Sign Up</button>
               </>
             )}
             <Link to="/courses" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 rounded-md text-foreground hover:bg-muted transition-colors text-sm font-medium">Explore All Courses</Link>
