@@ -60,21 +60,34 @@ export default function Signup() {
         if (intent === "signup" && !isNewUser) {
           await supabase.auth.signOut();
           if (isMounted) {
-            setError("User already exists. Please sign in instead.");
+            setError("User already exists. Please login to continue.");
             setIsVerifying(false);
+            toast({
+              title: "User already exists",
+              description: "Please login to continue.",
+              variant: "destructive"
+            });
           }
           return;
         }
       }
 
       // Check blocked
-      const { data } = await supabase.from("profiles").select("is_blocked").eq("id", session.user.id).maybeSingle();
+      const { data, error: profileError } = await supabase.from("profiles").select("is_blocked").eq("id", session.user.id).maybeSingle();
+      
+      // If we failed to fetch profile (e.g., because another StrictMode mount already logged us out), safely abort
+      if (profileError && !data) return;
+
       if (data?.is_blocked) {
-        localStorage.removeItem("oauth_intent");
         await supabase.auth.signOut();
         if (isMounted) {
           setError("Your account is blocked due to a violation of our terms. Please contact support.");
           setIsVerifying(false);
+          toast({
+            title: "Account Blocked",
+            description: "Your account is blocked due to a violation of our terms. Please contact support.",
+            variant: "destructive"
+          });
         }
         return;
       }
