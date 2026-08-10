@@ -3,7 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 interface Profile {
   full_name: string | null;
@@ -39,7 +39,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   
   const location = useLocation();
+  const navigate = useNavigate();
   const isAuthRoute = location.pathname === "/login" || location.pathname === "/signup";
+
+  useEffect(() => {
+    const intent = localStorage.getItem("oauth_intent");
+    if (intent && !isAuthRoute) {
+      navigate(`/${intent}`, { replace: true });
+    }
+  }, [isAuthRoute, navigate]);
 
   const [isInitializing, setIsInitializing] = useState(() => {
     try {

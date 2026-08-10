@@ -43,8 +43,7 @@ export default function Login() {
       const intent = localStorage.getItem("oauth_intent");
       if (intent) {
         const createdAt = new Date(session.user.created_at).getTime();
-        const lastSignIn = new Date(session.user.last_sign_in_at || session.user.created_at).getTime();
-        const isNewUser = Math.abs(lastSignIn - createdAt) < 15000;
+        const isNewUser = Math.abs(Date.now() - createdAt) < 30000;
 
         localStorage.removeItem("oauth_intent");
 
@@ -106,7 +105,7 @@ export default function Login() {
     setError(null);
     localStorage.setItem("oauth_intent", "login");
     const { error: oauthError } = await lovable.auth.signInWithOAuth("google", {
-      redirectTo: `${window.location.origin}/login`,
+      redirectTo: window.location.origin,
     });
 
     if (oauthError) {
