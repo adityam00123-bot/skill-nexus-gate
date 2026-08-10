@@ -42,13 +42,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
   const isAuthRoute = location.pathname === "/login" || location.pathname === "/signup";
 
-  useEffect(() => {
-    const intent = localStorage.getItem("oauth_intent");
-    if (intent && !isAuthRoute) {
-      navigate(`/${intent}`, { replace: true });
-    }
-  }, [isAuthRoute, navigate]);
-
   const [isInitializing, setIsInitializing] = useState(() => {
     try {
       for (let i = 0; i < localStorage.length; i++) {
@@ -152,6 +145,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [isAuthRoute]);
 
+  // Intercept oauth_intent after Supabase initializes, to redirect to the correct auth page
+  useEffect(() => {
+    if (!isInitializing && !isAuthRoute) {
+      const intent = localStorage.getItem("oauth_intent");
+      if (intent) {
+        navigate(`/${intent}`, { replace: true });
+      }
+    }
+  }, [isInitializing, isAuthRoute, navigate]);
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -161,6 +164,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   if (isInitializing && !isAuthRoute) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-6 animate-pulse shadow-lg shadow-primary/20">
+          <span className="text-primary-foreground font-bold text-2xl">CV</span>
+        </div>
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Prevent homepage flash if we're about to redirect based on intent
+  if (!isInitializing && !isAuthRoute && localStorage.getItem("oauth_intent")) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center">
         <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-6 animate-pulse shadow-lg shadow-primary/20">
