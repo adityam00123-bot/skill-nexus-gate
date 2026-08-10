@@ -78,6 +78,7 @@ export default function Login() {
       if (profileError && !data) return;
 
       if (data?.is_blocked) {
+        localStorage.removeItem("oauth_intent");
         await supabase.auth.signOut();
         if (isMounted) {
           setError("Your account is blocked due to a violation of our terms. Please contact support.");

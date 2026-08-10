@@ -68,20 +68,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return false;
   });
 
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
-    
-    if (data?.is_blocked && !isAuthRoute) {
-      setIsBlocked(true);
-      await supabase.auth.signOut();
-      setLoading(false);
-      setIsInitializing(false);
-      return;
-    }
+    const fetchProfile = async (userId: string) => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+      
+      const currentPath = window.location.pathname;
+      const onAuthPage = currentPath === "/login" || currentPath === "/signup";
+      const intent = localStorage.getItem("oauth_intent");
+      
+      if (data?.is_blocked && !onAuthPage && !intent) {
+        setIsBlocked(true);
+        await supabase.auth.signOut();
+        setLoading(false);
+        setIsInitializing(false);
+        return;
+      }
     
     setIsBlocked(data?.is_blocked || false);
     setProfile(data);
