@@ -6,11 +6,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Upload, CheckCircle2, XCircle, Loader2, FileSpreadsheet, ImageIcon, AlertTriangle } from "lucide-react";
+import { Download, Upload, CheckCircle2, XCircle, Loader2, FileSpreadsheet, ImageIcon, AlertTriangle, Wand2 } from "lucide-react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { CATEGORIES, SUBCATEGORY_MAP, DEFAULT_LEARN, DEFAULT_REQUIREMENTS, DEFAULT_TAGS } from "@/utils/courseConstants";
 import { Link } from "react-router-dom";
+import AIAssistModal from "@/components/admin/AIAssistModal";
 
 type ImportedRow = {
   originalIndex: number;
@@ -33,6 +34,7 @@ export default function BulkImport() {
   const [rows, setRows] = useState<ImportedRow[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const { toast } = useToast();
   
   const spreadsheetRef = useRef<HTMLInputElement>(null);
@@ -243,6 +245,18 @@ export default function BulkImport() {
     toast({ title: "Bulk import finished", description: "Check the results table for details." });
   };
 
+  const handleAddCourseFromAI = (generatedCourse: any) => {
+    setRows(prev => [
+      ...prev,
+      {
+        originalIndex: prev.length > 0 ? prev[prev.length - 1].originalIndex + 1 : 2,
+        data: generatedCourse,
+        status: "pending",
+        matchedFile: undefined
+      }
+    ]);
+  };
+
   const successCount = rows.filter(r => r.status === "success").length;
   const errorCount = rows.filter(r => r.status === "error").length;
 
@@ -256,6 +270,9 @@ export default function BulkImport() {
           <p className="text-muted-foreground mt-1">Upload a spreadsheet and matching thumbnails to create courses in bulk.</p>
         </div>
         <div className="flex gap-2">
+          <Button onClick={() => setAiModalOpen(true)} variant="outline" className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 gap-2">
+            <Wand2 className="h-4 w-4" /> AI Assist
+          </Button>
           <Link to="/admin/courses">
             <Button variant="outline" className="border-[#334155]">Back to Courses</Button>
           </Link>
@@ -414,6 +431,12 @@ export default function BulkImport() {
           </CardContent>
         </Card>
       )}
+
+      <AIAssistModal 
+        open={aiModalOpen} 
+        onOpenChange={setAiModalOpen} 
+        onAddCourse={handleAddCourseFromAI} 
+      />
     </div>
   );
 }
