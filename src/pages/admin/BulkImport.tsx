@@ -140,7 +140,7 @@ export default function BulkImport() {
     // Normalise category case
     row.category = matchedCategory;
 
-    if (!row.thumbnail_filename) return { valid: false, error: "Missing thumbnail_filename" };
+    // thumbnail_filename is optional — courses can be imported without an image
 
     return { valid: true };
   };
@@ -169,27 +169,27 @@ export default function BulkImport() {
           return;
         }
 
-        if (!row.matchedFile) {
-          updatedRows[absoluteIdx] = { ...row, status: "error", errorReason: `Image '${row.data.thumbnail_filename}' not found in uploaded images` };
-          return;
-        }
+        // Image is optional — if no matched file, we skip the upload and set thumbnail_url to null
 
         updatedRows[absoluteIdx] = { ...row, status: "processing" };
         setRows([...updatedRows]); // trigger re-render for progress
 
         try {
-          // 2. Upload Image
-          const fileExt = row.matchedFile.name.split('.').pop();
-          const filePath = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from("course-thumbnails")
-            .upload(filePath, row.matchedFile);
+          // 2. Upload Image (if available)
+          let thumbnailUrl: string | null = null;
+          if (row.matchedFile) {
+            const fileExt = row.matchedFile.name.split('.').pop();
+            const filePath = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+            
+            const { error: uploadError } = await supabase.storage
+              .from("course-thumbnails")
+              .upload(filePath, row.matchedFile);
 
-          if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
+            if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
-          const { data: urlData } = supabase.storage.from("course-thumbnails").getPublicUrl(filePath);
-          const thumbnailUrl = urlData.publicUrl;
+            const { data: urlData } = supabase.storage.from("course-thumbnails").getPublicUrl(filePath);
+            thumbnailUrl = urlData.publicUrl;
+          }
 
           // 3. Format Database Payload
           const d = row.data;
