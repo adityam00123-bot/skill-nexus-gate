@@ -120,25 +120,42 @@ export default function BulkImport() {
   const validateRow = (row: any): { valid: boolean, error?: string } => {
     if (!row.title || !row.title.trim()) return { valid: false, error: "Missing title" };
     
-    // Category validation
-    const cat = row.category?.toString().trim();
-    if (!cat) return { valid: false, error: "Missing category" };
+    // Category validation — supports comma-separated multiple categories
+    const catRaw = row.category?.toString().trim();
+    if (!catRaw) return { valid: false, error: "Missing category" };
     
-    const matchedCategory = CATEGORIES.find(c => c.toLowerCase() === cat.toLowerCase());
-    if (!matchedCategory) return { valid: false, error: `Invalid category: ${cat}` };
+    const catParts = catRaw.split(",").map((s: string) => s.trim()).filter(Boolean);
+    const validatedCategories: string[] = [];
+    for (const part of catParts) {
+      const matched = CATEGORIES.find(c => c.toLowerCase() === part.toLowerCase());
+      if (!matched) return { valid: false, error: `Invalid category: '${part}'` };
+      validatedCategories.push(matched);
+    }
 
-    // Subcategory validation (optional but if provided must match)
-    const subcat = row.subcategory?.toString().trim();
-    if (subcat) {
-      const allowedSubcats = SUBCATEGORY_MAP[matchedCategory] || [];
-      const matchedSub = allowedSubcats.find(s => s.toLowerCase() === subcat.toLowerCase());
-      if (!matchedSub) return { valid: false, error: `Invalid subcategory '${subcat}' for category '${matchedCategory}'` };
-      // Normalise case
-      row.subcategory = matchedSub;
+    // Subcategory validation — supports comma-separated, each must belong to one of the chosen categories
+    const subcatRaw = row.subcategory?.toString().trim();
+    const validatedSubcategories: string[] = [];
+    if (subcatRaw) {
+      const subParts = subcatRaw.split(",").map((s: string) => s.trim()).filter(Boolean);
+      for (const part of subParts) {
+        // Check if this subcategory belongs to ANY of the validated categories
+        let found = false;
+        for (const cat of validatedCategories) {
+          const allowed = SUBCATEGORY_MAP[cat] || [];
+          const matched = allowed.find(s => s.toLowerCase() === part.toLowerCase());
+          if (matched) {
+            validatedSubcategories.push(matched);
+            found = true;
+            break;
+          }
+        }
+        if (!found) return { valid: false, error: `Invalid subcategory '${part}' for categories [${validatedCategories.join(", ")}]` };
+      }
     }
     
-    // Normalise category case
-    row.category = matchedCategory;
+    // Store validated arrays back on the row for later payload use
+    row._validatedCategories = validatedCategories;
+    row._validatedSubcategories = validatedSubcategories;
 
     // thumbnail_filename is optional — courses can be imported without an image
 
@@ -224,8 +241,8 @@ export default function BulkImport() {
             original_price: d.original_price ? Number(d.original_price) : null,
             instructor_name: d.instructor_name || null,
             instructor_bio: d.instructor_bio || null,
-            category: d.category ? [d.category] : null,
-            subcategory: d.subcategory ? [d.subcategory] : null,
+            category: d._validatedCategories?.length ? d._validatedCategories : null,
+            subcategory: d._validatedSubcategories?.length ? d._validatedSubcategories : null,
             level: d.level || "Beginner",
             language: d.language || "Hindi",
             duration_hours: d.duration_hours ? Number(d.duration_hours) : null,
@@ -244,6 +261,8 @@ export default function BulkImport() {
           if (dbError) throw new Error(`Database error: ${dbError.message}`);
 
           updatedRows[absoluteIdx] = { ...updatedRows[absoluteIdx], status: "success", errorReason: undefined };
+          // Add to set so within-CSV duplicates are also caught
+          existingTitles.add(titleLower);
 
         } catch (err: any) {
           updatedRows[absoluteIdx] = { ...updatedRows[absoluteIdx], status: "error", errorReason: err.message };
