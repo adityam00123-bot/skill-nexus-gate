@@ -149,6 +149,14 @@ export default function BulkImport() {
     setIsProcessing(true);
     setProgress(0);
 
+    // Fetch all existing course titles to detect duplicates
+    const { data: existingCourses } = await supabase
+      .from("courses")
+      .select("title");
+    const existingTitles = new Set(
+      (existingCourses || []).map((c: any) => c.title?.trim().toLowerCase())
+    );
+
     const updatedRows = [...rows];
     let processedCount = 0;
 
@@ -166,6 +174,13 @@ export default function BulkImport() {
         const { valid, error } = validateRow(row.data);
         if (!valid) {
           updatedRows[absoluteIdx] = { ...row, status: "error", errorReason: error };
+          return;
+        }
+
+        // 2. Duplicate check
+        const titleLower = row.data.title?.trim().toLowerCase();
+        if (existingTitles.has(titleLower)) {
+          updatedRows[absoluteIdx] = { ...row, status: "error", errorReason: "Course already exists (duplicate title)" };
           return;
         }
 
