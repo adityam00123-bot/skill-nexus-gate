@@ -253,7 +253,7 @@ const MyLearning = () => {
           telegram_bot_channels(persistent_access_link)
         `)
         .eq("is_published", true)
-        .eq("is_deleted", false);
+        .or("is_deleted.eq.false,is_deleted.is.null");
 
       const mapped: Course[] = (courseRows || []).map((c: any) => {
         let persistentLink = null;

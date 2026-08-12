@@ -178,6 +178,8 @@ const CourseDetail = () => {
         .from("courses")
         .select("*")
         .eq("id", id)
+        .eq("is_published", true)
+        .or("is_deleted.eq.false,is_deleted.is.null")
         .maybeSingle();
 
       if (courseError || !courseData) {

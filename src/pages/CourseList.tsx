@@ -16,7 +16,8 @@ const CourseList = () => {
       const { data } = await supabase
         .from("courses")
         .select("id, title")
-        .eq("is_published", true);
+        .eq("is_published", true)
+        .or("is_deleted.eq.false,is_deleted.is.null");
       if (data) setDbCourses(data);
     };
     fetchCourses();

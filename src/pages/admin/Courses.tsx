@@ -635,6 +635,9 @@ export default function AdminCourses() {
           <Link to="/admin/bulk-import">
             <Button variant="outline" className="gap-2 border-[#334155]"><Upload className="h-4 w-4" /> Bulk Import</Button>
           </Link>
+          <Link to="/admin/recycle-bin">
+            <Button variant="outline" className="gap-2 border-[#334155] text-red-400 hover:text-red-300"><Trash2 className="h-4 w-4" /> Recycle Bin</Button>
+          </Link>
           <Button onClick={exportCSV} variant="outline" className="gap-2 border-[#334155]"><Download className="h-4 w-4" /> Export</Button>
           <Button onClick={openAdd} className="gap-2 bg-green-600 hover:bg-green-700 text-white"><Plus className="h-4 w-4" /> Add New Course</Button>
         </div>

@@ -62,6 +62,7 @@ import DeletedBlockedUsers from "./pages/admin/DeletedBlockedUsers";
 import AdminSettings from "./pages/admin/Settings";
 import AdminSupport from "./pages/admin/Support";
 import AdminBulkImport from "./pages/admin/BulkImport";
+import AdminRecycleBin from "./pages/admin/RecycleBin";
 
 const queryClient = new QueryClient();
 
@@ -119,6 +120,7 @@ const App = () => (
                     <Route index element={<AdminDashboard />} />
                     <Route path="courses" element={<AdminCourses />} />
                     <Route path="bulk-import" element={<AdminBulkImport />} />
+                    <Route path="recycle-bin" element={<AdminRecycleBin />} />
                     <Route path="telegram-assign" element={<AdminTelegramAssign />} />
                     <Route path="users" element={<AdminUsers />} />
                     <Route path="orders" element={<AdminOrders />} />
