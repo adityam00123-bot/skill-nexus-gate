@@ -167,9 +167,10 @@ export default function BulkImport() {
     setProgress(0);
 
     // Fetch all existing course titles to detect duplicates
-    const { data: existingCourses } = await supabase
+    const { data: existingCourses } = await (supabase as any)
       .from("courses")
-      .select("title");
+      .select("title")
+      .or("is_deleted.eq.false,is_deleted.is.null");
     const existingTitles = new Set(
       (existingCourses || []).map((c: any) => c.title?.trim().toLowerCase())
     );
