@@ -184,6 +184,75 @@ export default async function handler(req: any, res: any) {
         });
       }
     }
+
+    // Check for channel posts (videos)
+    if (update.channel_post || update.edited_channel_post) {
+      const post = update.channel_post || update.edited_channel_post;
+      console.log(`[webhook] Received channel post: ${post.message_id} in channel ${post.chat?.id}`);
+      
+      if (post.video && post.chat) {
+        const channelId = post.chat.id.toString();
+        const messageId = post.message_id.toString();
+        const durationSeconds = post.video.duration || 0;
+        
+        console.log(`[webhook] Post has video. Channel: ${channelId}, Message: ${messageId}, Duration: ${durationSeconds}s`);
+        
+        // Find if this channel is linked to a course
+        const { data: channelData, error: channelError } = await supabase
+          .from('telegram_bot_channels')
+          .select('assigned_to_course_id')
+          .eq('channel_id', channelId)
+          .single();
+          
+        if (channelError) {
+           console.error(`[webhook] Error fetching channel data for ${channelId}:`, channelError);
+        } else if (channelData?.assigned_to_course_id) {
+          const courseId = channelData.assigned_to_course_id;
+          console.log(`[webhook] Channel is linked to course: ${courseId}. Upserting video log.`);
+          
+          // Insert/Update the video log
+          const { error: upsertError } = await supabase
+            .from('course_video_log')
+            .upsert({
+              channel_id: channelId,
+              telegram_message_id: messageId,
+              duration_seconds: durationSeconds,
+              posted_at: new Date(post.date * 1000).toISOString()
+            }, { onConflict: 'channel_id, telegram_message_id' });
+            
+          if (upsertError) {
+             console.error(`[webhook] Error upserting video log:`, upsertError);
+          } else {
+             // Recompute totals
+             console.log(`[webhook] Recomputing totals for channel ${channelId}`);
+             const { data: videos, error: videosError } = await supabase
+               .from('course_video_log')
+               .select('duration_seconds')
+               .eq('channel_id', channelId);
+               
+             if (videosError) {
+                console.error(`[webhook] Error fetching videos to recompute:`, videosError);
+             } else if (videos) {
+                const total_lectures = videos.length;
+                const duration_hours = Math.round((videos.reduce((sum, v) => sum + (v.duration_seconds || 0), 0) / 3600) * 10) / 10;
+                
+                console.log(`[webhook] Updating course ${courseId} -> total_lectures: ${total_lectures}, duration_hours: ${duration_hours}`);
+                
+                const { error: updateError } = await supabase
+                  .from('courses')
+                  .update({ total_lectures, duration_hours })
+                  .eq('id', courseId);
+                  
+                if (updateError) {
+                   console.error(`[webhook] Error updating course totals:`, updateError);
+                }
+             }
+          }
+        } else {
+          console.log(`[webhook] Channel ${channelId} has no assigned course. Ignoring.`);
+        }
+      }
+    }
   } catch (error: any) {
     console.error(`Telegram webhook processing error: ${error?.message || 'Unknown error'}`, error?.stack);
   }
