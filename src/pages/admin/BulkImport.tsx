@@ -6,18 +6,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Upload, CheckCircle2, XCircle, Loader2, FileSpreadsheet, ImageIcon, AlertTriangle, Wand2 } from "lucide-react";
+import { Download, Upload, CheckCircle2, XCircle, Loader2, FileSpreadsheet, ImageIcon, AlertTriangle, Wand2, RefreshCw, SkipForward, PlusCircle } from "lucide-react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { CATEGORIES, SUBCATEGORY_MAP, DEFAULT_LEARN, DEFAULT_REQUIREMENTS, DEFAULT_TAGS } from "@/utils/courseConstants";
 import { Link } from "react-router-dom";
 import AIAssistModal from "@/components/admin/AIAssistModal";
 
+type RowStatus = "pending" | "processing" | "created" | "updated" | "skipped" | "error";
+
 type ImportedRow = {
   originalIndex: number;
   data: any;
-  status: "pending" | "processing" | "success" | "error";
+  status: RowStatus;
   errorReason?: string;
+  changeDetails?: string;
   matchedFile?: File;
 };
 
@@ -27,6 +30,99 @@ const EXPECTED_HEADERS = [
   "language", "duration_hours", "total_lectures", "tags", "what_you_learn", 
   "requirements", "thumbnail_filename"
 ];
+
+// Helper to split strings by a delimiter
+const splitBy = (val: any, char: string): string[] | null => {
+  if (!val) return null;
+  if (typeof val !== "string") return [val.toString()];
+  return val.split(char).map((s: string) => s.trim()).filter(Boolean);
+};
+
+// Compare two values for equality (handles arrays, nulls, numbers)
+const isEqual = (a: any, b: any): boolean => {
+  if (a === b) return true;
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+
+  // Both are arrays
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    const sortedA = [...a].sort();
+    const sortedB = [...b].sort();
+    return sortedA.every((v, i) => v === sortedB[i]);
+  }
+
+  // One is array, other isn't
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  // Numbers — compare as numbers
+  if (typeof a === "number" || typeof b === "number") {
+    return Number(a) === Number(b);
+  }
+
+  // Strings — trim and compare
+  if (typeof a === "string" && typeof b === "string") {
+    return a.trim() === b.trim();
+  }
+
+  return String(a) === String(b);
+};
+
+// Build a human-readable diff summary and the update payload
+const diffCourse = (
+  existing: any,
+  newPayload: any,
+  skipThumbnail: boolean
+): { changes: Record<string, any>; summary: string } => {
+  const COMPARE_FIELDS = [
+    "description", "short_description", "price", "original_price",
+    "instructor_name", "instructor_bio", "category", "subcategory",
+    "level", "language", "duration_hours", "total_lectures",
+    "tags", "what_you_learn", "requirements",
+  ];
+
+  const changes: Record<string, any> = {};
+  const summaryParts: string[] = [];
+
+  for (const field of COMPARE_FIELDS) {
+    const oldVal = existing[field];
+    const newVal = newPayload[field];
+
+    // Skip if new value is null/undefined — don't clear existing data
+    if (newVal == null) continue;
+
+    if (!isEqual(oldVal, newVal)) {
+      changes[field] = newVal;
+
+      // Build human-readable summary
+      if (Array.isArray(newVal)) {
+        summaryParts.push(`${field} updated`);
+      } else if (typeof newVal === "string" && newVal.length > 80) {
+        summaryParts.push(`${field} updated`);
+      } else if (field === "price" || field === "original_price") {
+        summaryParts.push(`${field}: ₹${oldVal ?? 0} → ₹${newVal}`);
+      } else {
+        const oldDisplay = oldVal != null ? String(oldVal) : "(empty)";
+        const newDisplay = String(newVal);
+        if (oldDisplay.length > 40 || newDisplay.length > 40) {
+          summaryParts.push(`${field} updated`);
+        } else {
+          summaryParts.push(`${field}: ${oldDisplay} → ${newDisplay}`);
+        }
+      }
+    }
+  }
+
+  // Thumbnail — only include if we have a new URL
+  if (!skipThumbnail && newPayload.thumbnail_url) {
+    if (!isEqual(existing.thumbnail_url, newPayload.thumbnail_url)) {
+      changes.thumbnail_url = newPayload.thumbnail_url;
+      summaryParts.push("thumbnail updated");
+    }
+  }
+
+  return { changes, summary: summaryParts.join(", ") };
+};
 
 export default function BulkImport() {
   const [spreadsheetFile, setSpreadsheetFile] = useState<File | null>(null);
@@ -59,7 +155,7 @@ export default function BulkImport() {
       setImageFiles(prev => [...prev, ...Array.from(e.target.files!)]);
       // Attempt to re-match existing rows if they are pending
       setRows(prevRows => prevRows.map(row => {
-        if (row.status !== "success" && row.data.thumbnail_filename) {
+        if (!["created", "updated", "skipped"].includes(row.status) && row.data.thumbnail_filename) {
           const matched = Array.from(e.target.files!).find(f => f.name === row.data.thumbnail_filename) || row.matchedFile;
           return { ...row, matchedFile: matched };
         }
@@ -162,18 +258,47 @@ export default function BulkImport() {
     return { valid: true };
   };
 
+  // Build the database payload from a parsed row
+  const buildPayload = (d: any) => {
+    return {
+      title: d.title.trim(),
+      description: d.description || null,
+      short_description: d.short_description || null,
+      price: d.price ? Number(d.price) : null,
+      original_price: d.original_price ? Number(d.original_price) : null,
+      instructor_name: d.instructor_name || null,
+      instructor_bio: d.instructor_bio || null,
+      category: d._validatedCategories?.length ? d._validatedCategories : null,
+      subcategory: d._validatedSubcategories?.length ? d._validatedSubcategories : null,
+      level: d.level || "Beginner",
+      language: d.language || "Hindi",
+      duration_hours: d.duration_hours ? Number(d.duration_hours) : null,
+      total_lectures: d.total_lectures ? Number(d.total_lectures) : null,
+      tags: d.tags ? splitBy(d.tags, ",") : DEFAULT_TAGS,
+      what_you_learn: d.what_you_learn ? splitBy(d.what_you_learn, "\n") : DEFAULT_LEARN,
+      requirements: d.requirements ? splitBy(d.requirements, "\n") : DEFAULT_REQUIREMENTS,
+    };
+  };
+
   const processImports = async () => {
     setIsProcessing(true);
     setProgress(0);
 
-    // Fetch all existing course titles to detect duplicates
+    // Fetch all existing courses (non-deleted) with full records for comparison
     const { data: existingCourses } = await (supabase as any)
       .from("courses")
-      .select("title")
+      .select("*")
       .or("is_deleted.eq.false,is_deleted.is.null");
-    const existingTitles = new Set(
-      (existingCourses || []).map((c: any) => c.title?.trim().toLowerCase())
-    );
+
+    // Build a Map of lowercase title → full course record
+    const courseMap = new Map<string, any>();
+    (existingCourses || []).forEach((c: any) => {
+      const key = c.title?.trim().toLowerCase();
+      if (key) courseMap.set(key, c);
+    });
+
+    // Track titles processed within this batch (for within-CSV dedup)
+    const processedInBatch = new Set<string>();
 
     const updatedRows = [...rows];
     let processedCount = 0;
@@ -186,7 +311,8 @@ export default function BulkImport() {
       const batchPromises = batch.map(async (row, batchIdx) => {
         const absoluteIdx = i + batchIdx;
         
-        if (row.status === "success") return; // Skip already successful rows if retrying
+        // Skip already processed rows if retrying
+        if (["created", "updated", "skipped"].includes(row.status)) return;
         
         // 1. Validation
         const { valid, error } = validateRow(row.data);
@@ -195,14 +321,13 @@ export default function BulkImport() {
           return;
         }
 
-        // 2. Duplicate check
         const titleLower = row.data.title?.trim().toLowerCase();
-        if (existingTitles.has(titleLower)) {
-          updatedRows[absoluteIdx] = { ...row, status: "error", errorReason: "Course already exists (duplicate title)" };
+
+        // Within-CSV duplicate: if same title already processed in this upload
+        if (processedInBatch.has(titleLower)) {
+          updatedRows[absoluteIdx] = { ...row, status: "skipped", changeDetails: "Duplicate row within this CSV (already processed above)" };
           return;
         }
-
-        // Image is optional — if no matched file, we skip the upload and set thumbnail_url to null
 
         updatedRows[absoluteIdx] = { ...row, status: "processing" };
         setRows([...updatedRows]); // trigger re-render for progress
@@ -210,6 +335,7 @@ export default function BulkImport() {
         try {
           // 2. Upload Image (if available)
           let thumbnailUrl: string | null = null;
+          const hasThumbnailFile = !!row.matchedFile;
           if (row.matchedFile) {
             const fileExt = row.matchedFile.name.split('.').pop();
             const filePath = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -224,46 +350,52 @@ export default function BulkImport() {
             thumbnailUrl = urlData.publicUrl;
           }
 
-          // 3. Format Database Payload
-          const d = row.data;
-          
-          // Helper to split strings
-          const splitBy = (val: any, char: string) => {
-            if (!val) return null;
-            if (typeof val !== "string") return [val.toString()];
-            return val.split(char).map((s: string) => s.trim()).filter(Boolean);
-          };
+          // 3. Build payload
+          const payload = buildPayload(row.data);
 
-          const payload = {
-            title: d.title.trim(),
-            description: d.description || null,
-            short_description: d.short_description || null,
-            price: d.price ? Number(d.price) : null,
-            original_price: d.original_price ? Number(d.original_price) : null,
-            instructor_name: d.instructor_name || null,
-            instructor_bio: d.instructor_bio || null,
-            category: d._validatedCategories?.length ? d._validatedCategories : null,
-            subcategory: d._validatedSubcategories?.length ? d._validatedSubcategories : null,
-            level: d.level || "Beginner",
-            language: d.language || "Hindi",
-            duration_hours: d.duration_hours ? Number(d.duration_hours) : null,
-            total_lectures: d.total_lectures ? Number(d.total_lectures) : null,
-            tags: d.tags ? splitBy(d.tags, ",") : DEFAULT_TAGS,
-            what_you_learn: d.what_you_learn ? splitBy(d.what_you_learn, "\n") : DEFAULT_LEARN,
-            requirements: d.requirements ? splitBy(d.requirements, "\n") : DEFAULT_REQUIREMENTS,
-            thumbnail_url: thumbnailUrl,
-            is_published: false, // Always draft
-            is_featured: false,
-            is_free: d.price && Number(d.price) === 0 ? true : false,
-          };
+          // 4. Check if course already exists
+          const existingCourse = courseMap.get(titleLower);
 
-          // 4. Insert into database
-          const { error: dbError } = await supabase.from("courses").insert(payload);
-          if (dbError) throw new Error(`Database error: ${dbError.message}`);
+          if (!existingCourse) {
+            // ===== INSERT (new course) =====
+            const insertPayload = {
+              ...payload,
+              thumbnail_url: thumbnailUrl,
+              is_published: false,
+              is_featured: false,
+              is_free: payload.price != null && Number(payload.price) === 0,
+            };
 
-          updatedRows[absoluteIdx] = { ...updatedRows[absoluteIdx], status: "success", errorReason: undefined };
-          // Add to set so within-CSV duplicates are also caught
-          existingTitles.add(titleLower);
+            const { error: dbError } = await supabase.from("courses").insert(insertPayload);
+            if (dbError) throw new Error(`Database error: ${dbError.message}`);
+
+            updatedRows[absoluteIdx] = { ...updatedRows[absoluteIdx], status: "created", errorReason: undefined, changeDetails: undefined };
+            // Add to map so later rows in same CSV see it as existing
+            courseMap.set(titleLower, { ...insertPayload, id: "new" });
+          } else {
+            // ===== UPDATE or SKIP (existing course) =====
+            const payloadWithThumb = thumbnailUrl ? { ...payload, thumbnail_url: thumbnailUrl } : payload;
+            const { changes, summary } = diffCourse(existingCourse, payloadWithThumb, !hasThumbnailFile);
+
+            if (Object.keys(changes).length === 0) {
+              // No changes — skip
+              updatedRows[absoluteIdx] = { ...updatedRows[absoluteIdx], status: "skipped", errorReason: undefined, changeDetails: "No changes detected" };
+            } else {
+              // Update only changed fields
+              const { error: dbError } = await (supabase as any)
+                .from("courses")
+                .update(changes)
+                .eq("id", existingCourse.id);
+
+              if (dbError) throw new Error(`Update failed: ${dbError.message}`);
+
+              updatedRows[absoluteIdx] = { ...updatedRows[absoluteIdx], status: "updated", errorReason: undefined, changeDetails: summary };
+              // Update the map entry so subsequent rows see updated data
+              courseMap.set(titleLower, { ...existingCourse, ...changes });
+            }
+          }
+
+          processedInBatch.add(titleLower);
 
         } catch (err: any) {
           updatedRows[absoluteIdx] = { ...updatedRows[absoluteIdx], status: "error", errorReason: err.message };
@@ -292,7 +424,9 @@ export default function BulkImport() {
     ]);
   };
 
-  const successCount = rows.filter(r => r.status === "success").length;
+  const createdCount = rows.filter(r => r.status === "created").length;
+  const updatedCount = rows.filter(r => r.status === "updated").length;
+  const skippedCount = rows.filter(r => r.status === "skipped").length;
   const errorCount = rows.filter(r => r.status === "error").length;
 
   return (
@@ -302,7 +436,7 @@ export default function BulkImport() {
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Upload className="h-6 w-6" /> Bulk Import Courses
           </h1>
-          <p className="text-muted-foreground mt-1">Upload a spreadsheet and matching thumbnails to create courses in bulk.</p>
+          <p className="text-muted-foreground mt-1">Upload a spreadsheet and matching thumbnails to create or update courses in bulk.</p>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setAiModalOpen(true)} variant="outline" className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 gap-2">
@@ -407,11 +541,29 @@ export default function BulkImport() {
       {rows.length > 0 && (
         <Card className="bg-[#1E293B] border-[#334155]">
           <CardHeader className="pb-3 border-b border-[#334155]">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <CardTitle className="text-lg">Import Results</CardTitle>
-              <div className="flex gap-2">
-                {successCount > 0 && <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">{successCount} Successful</Badge>}
-                {errorCount > 0 && <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">{errorCount} Failed</Badge>}
+              <div className="flex gap-2 flex-wrap">
+                {createdCount > 0 && (
+                  <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20 gap-1">
+                    <PlusCircle className="h-3 w-3" /> {createdCount} New
+                  </Badge>
+                )}
+                {updatedCount > 0 && (
+                  <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 gap-1">
+                    <RefreshCw className="h-3 w-3" /> {updatedCount} Updated
+                  </Badge>
+                )}
+                {skippedCount > 0 && (
+                  <Badge variant="outline" className="bg-slate-500/10 text-slate-400 border-slate-500/20 gap-1">
+                    <SkipForward className="h-3 w-3" /> {skippedCount} Skipped
+                  </Badge>
+                )}
+                {errorCount > 0 && (
+                  <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20 gap-1">
+                    <XCircle className="h-3 w-3" /> {errorCount} Failed
+                  </Badge>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -429,12 +581,22 @@ export default function BulkImport() {
               </TableHeader>
               <TableBody>
                 {rows.map((row, idx) => (
-                  <TableRow key={idx} className={`border-[#334155] ${row.status === "error" ? "bg-red-500/5" : ""}`}>
+                  <TableRow 
+                    key={idx} 
+                    className={`border-[#334155] ${
+                      row.status === "error" ? "bg-red-500/5" : 
+                      row.status === "updated" ? "bg-blue-500/5" :
+                      row.status === "created" ? "bg-green-500/5" :
+                      ""
+                    }`}
+                  >
                     <TableCell className="text-center font-medium text-muted-foreground">{row.originalIndex}</TableCell>
                     <TableCell>
                       {row.status === "pending" && <Badge variant="outline" className="text-slate-400 border-slate-700">Pending</Badge>}
                       {row.status === "processing" && <Badge variant="outline" className="text-blue-400 border-blue-800 bg-blue-900/20"><Loader2 className="h-3 w-3 mr-1 animate-spin"/> Processing</Badge>}
-                      {row.status === "success" && <Badge variant="outline" className="text-green-400 border-green-800 bg-green-900/20">Success</Badge>}
+                      {row.status === "created" && <Badge variant="outline" className="text-green-400 border-green-800 bg-green-900/20"><PlusCircle className="h-3 w-3 mr-1"/> New</Badge>}
+                      {row.status === "updated" && <Badge variant="outline" className="text-blue-400 border-blue-800 bg-blue-900/20"><RefreshCw className="h-3 w-3 mr-1"/> Updated</Badge>}
+                      {row.status === "skipped" && <Badge variant="outline" className="text-slate-400 border-slate-700 bg-slate-800/20"><SkipForward className="h-3 w-3 mr-1"/> Skipped</Badge>}
                       {row.status === "error" && <Badge variant="outline" className="text-red-400 border-red-800 bg-red-900/20">Failed</Badge>}
                     </TableCell>
                     <TableCell className="font-medium max-w-[200px] truncate" title={row.data.title}>{row.data.title || <span className="text-red-400 italic">Missing</span>}</TableCell>
@@ -448,13 +610,17 @@ export default function BulkImport() {
                       </div>
                     </TableCell>
                     <TableCell className="max-w-[300px]">
-                      {row.errorReason ? (
+                      {row.status === "error" && row.errorReason ? (
                         <div className="flex items-start gap-1.5 text-red-400 text-sm">
                           <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                           <span className="break-words">{row.errorReason}</span>
                         </div>
-                      ) : row.status === "success" ? (
+                      ) : row.status === "created" ? (
                         <span className="text-green-400 text-sm">Imported as draft</span>
+                      ) : row.status === "updated" ? (
+                        <span className="text-blue-400 text-sm">{row.changeDetails}</span>
+                      ) : row.status === "skipped" ? (
+                        <span className="text-slate-400 text-sm">{row.changeDetails || "No changes detected"}</span>
                       ) : (
                         <span className="text-muted-foreground text-sm">-</span>
                       )}
