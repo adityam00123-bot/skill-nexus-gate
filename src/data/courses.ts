@@ -1,4 +1,4 @@
-import { categoryGroups } from "@/data/categoryData";
+import { CATEGORIES, SUBCATEGORY_MAP } from "@/utils/courseConstants";
 
 export interface Course {
   id: string;
@@ -21,24 +21,6 @@ export interface Course {
   persistentAccessLink?: string;
   featured?: boolean;
 }
-
-const categoryIconMap: Record<string, string> = {
-  trading: "📈",
-  options: "📋",
-  investing: "💰",
-  "technical-analysis": "📊",
-  "price-action-smc": "🎯",
-  "indicators-tools": "🔧",
-  "crypto-forex": "🪙",
-  "algo-ai": "🤖",
-};
-
-export const categories = categoryGroups.map((cg) => ({
-  id: cg.id,
-  name: cg.name,
-  icon: categoryIconMap[cg.id] || "📚",
-  count: 0,
-}));
 
 const thumbnails = [
   "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&q=80",
@@ -167,10 +149,7 @@ let courseId = 0;
 //   courses.push(generateCourse(courseId++, cat.id, sub.id, round));
 // }
 
-// Update category counts
-categories.forEach((c) => {
-  c.count = courses.filter((course) => course.category === c.id).length;
-});
+
 
 export function searchCourses(query: string, category?: string, subcategory?: string): Course[] {
   const q = query.toLowerCase();

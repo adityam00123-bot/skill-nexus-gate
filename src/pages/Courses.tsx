@@ -11,8 +11,8 @@ import Navbar from "@/components/Navbar";
 import CategoryBar from "@/components/CategoryBar";
 import Footer from "@/components/Footer";
 import CourseCard from "@/components/CourseCard";
-import { categories, courses as staticCourses, type Course } from "@/data/courses";
-import { categoryGroups } from "@/data/categoryData";
+import { courses as staticCourses, type Course } from "@/data/courses";
+import { CATEGORIES, SUBCATEGORY_MAP } from "@/utils/courseConstants";
 import { supabase } from "@/integrations/supabase/client";
 
 // Helper to check if a string is a UUID (i.e. a real Supabase course, not a dummy)
@@ -111,11 +111,9 @@ const Courses = () => {
     setPage(1);
   };
 
-  const activeCatGroup = categoryGroups.find((c) => c.id === category);
-  const activeSubObj = activeCatGroup?.subcategories.find((s) => s.id === subcategory);
-  const categoryLabel = activeCatGroup?.name || "All";
-  const subcategoryLabel = activeSubObj?.name || "";
-  const availableSubs = activeCatGroup?.subcategories || [];
+  const categoryLabel = category !== "all" ? category : "All";
+  const subcategoryLabel = subcategory !== "all" ? subcategory : "";
+  const availableSubs = category !== "all" ? (SUBCATEGORY_MAP[category] || []) : [];
 
   // Merge static + DB courses, DB courses override by id
   const allCourses = useMemo(() => {
@@ -137,22 +135,20 @@ const Courses = () => {
       );
     }
 
-    // Category filter — match against both slug IDs (dummy) and display names (DB)
+    // Category filter — exact match against display names (DB)
     if (category !== "all") {
-      const catGroup = categoryGroups.find(g => g.id === category);
-      if (catGroup) {
-        const catId = catGroup.id.toLowerCase();
-        const catName = catGroup.name.toLowerCase();
-        results = results.filter(c => {
-          const cat = (Array.isArray(c.category) ? (c.category[0] || "") : (c.category || "")).toLowerCase();
-          return cat === catId || cat === catName || cat.includes(catName) || catName.includes(cat) || catGroup.subcategories.some(s => c.subcategory === s.id || c.subcategory === s.name);
-        });
-      }
+      results = results.filter(c => {
+        const cat = Array.isArray(c.category) ? (c.category[0] || "") : (c.category || "");
+        return cat === category;
+      });
     }
 
     // Subcategory filter
     if (subcategory) {
-      results = results.filter(c => c.subcategory === subcategory || c.subcategory === activeSubObj?.name);
+      results = results.filter(c => {
+        const sub = Array.isArray(c.subcategory) ? (c.subcategory[0] || "") : (c.subcategory || "");
+        return sub === subcategory;
+      });
     }
 
     // Price filter
@@ -178,7 +174,7 @@ const Courses = () => {
     else results.sort((a, b) => realFirst(a, b) || b.students - a.students);
 
     return results;
-  }, [query, category, subcategory, sortBy, priceRange, selectedLevels, minRating, allCourses, activeSubObj]);
+  }, [query, category, subcategory, sortBy, priceRange, selectedLevels, minRating, allCourses]);
 
   const paginated = filtered.slice(0, page * ITEMS_PER_PAGE);
   const hasMore = paginated.length < filtered.length;
@@ -233,8 +229,8 @@ const Courses = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              {CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -246,7 +242,7 @@ const Courses = () => {
               <SelectContent>
                 <SelectItem value="all">All Subcategories</SelectItem>
                 {availableSubs.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

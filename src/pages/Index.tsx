@@ -7,7 +7,8 @@ import CategoryBar from "@/components/CategoryBar";
 import HeroSlider from "@/components/HeroSlider";
 import Footer from "@/components/Footer";
 import CourseCard from "@/components/CourseCard";
-import { categories, type Course } from "@/data/courses";
+import { type Course } from "@/data/courses";
+import { CATEGORIES, CATEGORY_EMOJIS } from "@/utils/courseConstants";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePurchaseContext } from "@/contexts/PurchaseContext";
 import { useMemo, useState, useEffect } from "react";
@@ -254,14 +255,14 @@ const Index = () => {
         </Link>
         {/* Category grid – 4 per row */}
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          {categories.map((cat) => (
+          {CATEGORIES.map((cat) => (
             <Link
-              key={cat.id}
-              to={`/courses?category=${cat.id}`}
+              key={cat}
+              to={`/courses?category=${encodeURIComponent(cat)}`}
               className="group flex flex-col items-center gap-3 p-6 rounded-xl bg-card border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow hover:-translate-y-1"
             >
-              <span className="text-4xl group-hover:scale-110 transition-transform duration-300">{cat.icon}</span>
-              <span className="font-display font-semibold text-foreground">{cat.name}</span>
+              <span className="text-4xl group-hover:scale-110 transition-transform duration-300">{CATEGORY_EMOJIS[cat]}</span>
+              <span className="font-display font-semibold text-foreground text-center">{cat}</span>
               <span className="text-sm text-muted-foreground">Explore</span>
             </Link>
           ))}

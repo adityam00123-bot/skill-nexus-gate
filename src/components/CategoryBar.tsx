@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { categoryGroups } from "@/data/categoryData";
+import { CATEGORIES, SUBCATEGORY_MAP } from "@/utils/courseConstants";
 
 const CategoryBar = () => {
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
@@ -11,10 +11,10 @@ const CategoryBar = () => {
   const catRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseEnter = (catId: string) => {
+  const handleMouseEnter = (cat: string) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setHoveredCategory(catId);
-    const el = catRefs.current[catId];
+    setHoveredCategory(cat);
+    const el = catRefs.current[cat];
     const container = containerRef.current;
     if (el && container) {
       const elRect = el.getBoundingClientRect();
@@ -35,7 +35,8 @@ const CategoryBar = () => {
     barRef.current?.scrollBy({ left: dir === "left" ? -200 : 200, behavior: "smooth" });
   };
 
-  const activeCat = categoryGroups.find((c) => c.id === hoveredCategory);
+  const activeCat = CATEGORIES.find((c) => c === hoveredCategory);
+  const activeSubcats = activeCat ? (SUBCATEGORY_MAP[activeCat] || []) : [];
 
   return (
     <div ref={containerRef} className="relative z-40" onMouseLeave={handleMouseLeave}>
@@ -47,22 +48,22 @@ const CategoryBar = () => {
           </button>
 
           <div ref={barRef} className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide py-2 px-6 lg:px-0 lg:justify-center">
-            {categoryGroups.map((cat) => (
+            {CATEGORIES.map((cat) => (
               <div
-                key={cat.id}
-                ref={(el) => { catRefs.current[cat.id] = el; }}
-                onMouseEnter={() => handleMouseEnter(cat.id)}
+                key={cat}
+                ref={(el) => { catRefs.current[cat] = el; }}
+                onMouseEnter={() => handleMouseEnter(cat)}
                 className="relative"
               >
                 <Link
-                  to={`/courses?category=${cat.id}`}
+                  to={`/courses?category=${encodeURIComponent(cat)}`}
                   className={`flex items-center px-3.5 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-all duration-150 ${
-                    hoveredCategory === cat.id
+                    hoveredCategory === cat
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   }`}
                 >
-                  {cat.name}
+                  {cat}
                 </Link>
               </div>
             ))}
@@ -75,7 +76,7 @@ const CategoryBar = () => {
       </div>
 
       {/* Overlay: arrow + subcategory bar */}
-      {activeCat && (
+      {activeCat && activeSubcats.length > 0 && (
         <div className="absolute top-full left-0 w-full z-50" onMouseEnter={handleSubbarEnter}>
           {/* Triangle arrow */}
           <div
@@ -98,16 +99,16 @@ const CategoryBar = () => {
             style={{ background: "hsl(222 47% 11%)", height: "48px" }}
           >
             <div className="max-w-[1200px] mx-auto px-6 h-full flex items-center justify-center gap-6 overflow-x-auto scrollbar-hide">
-              {activeCat.subcategories.map((sub) => (
+              {activeSubcats.map((sub) => (
                 <Link
-                  key={sub.id}
-                  to={`/courses?category=${activeCat.id}&subcategory=${sub.id}`}
+                  key={sub}
+                  to={`/courses?category=${encodeURIComponent(activeCat)}&subcategory=${encodeURIComponent(sub)}`}
                   className="text-sm whitespace-nowrap font-medium transition-colors duration-150 py-1"
                   style={{ color: "hsl(215 20% 65%)" }}
                   onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
                   onMouseLeave={(e) => (e.currentTarget.style.color = "hsl(215 20% 65%)")}
                 >
-                  {sub.name}
+                  {sub}
                 </Link>
               ))}
             </div>

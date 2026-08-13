@@ -7,6 +7,7 @@ export const CATEGORIES = [
   "Indicators & Tools",
   "Crypto & Forex",
   "Algo & AI Skills",
+  "Mentorship & Psychology",
 ];
 
 export const SUBCATEGORY_MAP: Record<string, string[]> = {
@@ -78,6 +79,25 @@ export const SUBCATEGORY_MAP: Record<string, string[]> = {
     "AI in Trading",
     "Quantitative Trading",
   ],
+  "Mentorship & Psychology": [
+    "Trading Psychology",
+    "Risk Management",
+    "Trade Journaling",
+    "1-on-1 Mentorship",
+    "Mindset Training",
+  ],
+};
+
+export const CATEGORY_EMOJIS: Record<string, string> = {
+  "Trading": "📈",
+  "Options": "📋",
+  "Investing": "💰",
+  "Technical Analysis": "📊",
+  "Price Action/SMC": "🎯",
+  "Indicators & Tools": "🔧",
+  "Crypto & Forex": "🪙",
+  "Algo & AI Skills": "🤖",
+  "Mentorship & Psychology": "🧠",
 };
 
 export const LEVELS = ["Beginner", "Intermediate", "Advanced"];

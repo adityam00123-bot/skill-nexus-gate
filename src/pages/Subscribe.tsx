@@ -18,7 +18,8 @@ import {
   Star,
   ChevronDown,
   ChevronUp,
-  Shield
+  Shield,
+  Brain
 } from
   "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,17 +46,19 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useToast } from "@/hooks/use-toast";
 
-const categories = [
-  { name: "Trading", icon: TrendingUp },
-  { name: "Options & Futures", icon: BarChart3 },
-  { name: "Investing", icon: LineChart },
-  { name: "Technical Analysis", icon: BarChart3 },
-  { name: "Price Action / SMC", icon: TrendingUp },
-  { name: "Indicators & Trading Tools", icon: Cpu },
-  { name: "Crypto & Forex", icon: Bitcoin },
-  { name: "Algo Trading", icon: Bot },
-  { name: "AI Tools", icon: Sparkles },
-  { name: "Digital Skills", icon: BookOpen }];
+import { CATEGORIES } from "@/utils/courseConstants";
+
+const CATEGORY_ICONS: Record<string, any> = {
+  "Trading": TrendingUp,
+  "Options": BarChart3,
+  "Investing": LineChart,
+  "Technical Analysis": BarChart3,
+  "Price Action/SMC": TrendingUp,
+  "Indicators & Tools": Cpu,
+  "Crypto & Forex": Bitcoin,
+  "Algo & AI Skills": Bot,
+  "Mentorship & Psychology": Brain,
+};
 
 
 const benefits = [
@@ -358,15 +361,18 @@ const Subscribe = () => {
           Explore our diverse course library across these categories
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 max-w-4xl mx-auto">
-          {categories.map((cat) =>
-            <div
-              key={cat.name}
-              className="flex flex-col items-center gap-3 p-5 rounded-xl bg-card border border-border hover:border-primary/50 hover:shadow-glow transition-all text-center">
+          {CATEGORIES.map((cat) => {
+            const Icon = CATEGORY_ICONS[cat] || BookOpen;
+            return (
+              <div
+                key={cat}
+                className="flex flex-col items-center justify-center gap-3 p-5 rounded-xl bg-card border border-border hover:border-primary/50 hover:shadow-glow transition-all text-center h-full">
 
-              <cat.icon className="h-7 w-7 text-primary" />
-              <span className="text-sm font-semibold text-foreground">{cat.name}</span>
-            </div>
-          )}
+                <Icon className="h-7 w-7 text-primary" />
+                <span className="text-sm font-semibold text-foreground leading-tight">{cat}</span>
+              </div>
+            );
+          })}
         </div>
       </section>
 
