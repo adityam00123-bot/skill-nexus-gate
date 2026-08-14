@@ -46,6 +46,7 @@ interface CourseForm {
   duration_hours: string; total_lectures: string; manual_rating: string; manual_students: string;
   is_featured: boolean; is_free: boolean; is_published: boolean;
   what_you_learn: string[]; requirements: string[]; tags: string[];
+  course_number?: number | null;
 }
 
 const emptyForm: CourseForm = {
@@ -56,6 +57,7 @@ const emptyForm: CourseForm = {
   duration_hours: "", total_lectures: "", manual_rating: "", manual_students: "0",
   is_featured: false, is_free: false, is_published: true,
   what_you_learn: [], requirements: [], tags: [],
+  course_number: null,
 };
 
 export default function AdminCourses() {
@@ -145,7 +147,14 @@ export default function AdminCourses() {
   useEffect(() => { fetchCourses(); }, [fetchCourses]);
 
   const filtered = courses.filter((c) => {
-    if (search && !c.title?.toLowerCase().includes(search.toLowerCase()) && !c.instructor_name?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const s = search.trim().toLowerCase();
+      const numClean = s.replace(/^#/, "").trim();
+      const matchNumber = numClean !== "" && !isNaN(Number(numClean)) && c.course_number != null && String(c.course_number).includes(numClean);
+      const matchTitle = c.title?.toLowerCase().includes(s);
+      const matchInstructor = c.instructor_name?.toLowerCase().includes(s);
+      if (!matchTitle && !matchInstructor && !matchNumber) return false;
+    }
     if (catFilter !== "all") {
       const cats: string[] = Array.isArray(c.category) ? c.category : (c.category ? [c.category] : []);
       if (!cats.includes(catFilter)) return false;
@@ -219,6 +228,7 @@ export default function AdminCourses() {
       manual_students: c.total_students != null ? String(c.total_students) : "0",
       is_featured: !!c.is_featured, is_free: !!c.is_free, is_published: !!c.is_published,
       what_you_learn: c.what_you_learn || [], requirements: c.requirements || [], tags: c.tags || [],
+      course_number: c.course_number != null ? c.course_number : null,
     });
     setLearnInput(""); setReqInput(""); setTagInput(""); setCatInput(""); setSubcatInput("");
     setThumbMode(c.thumbnail_url ? "url" : "url");
@@ -834,6 +844,7 @@ export default function AdminCourses() {
                       }} 
                     />
                   </TableHead>
+                  <TableHead className="w-12 text-center font-semibold">#</TableHead>
                   <TableHead className="w-14">Thumb</TableHead>
                   <TableHead>Course Name</TableHead>
                   <TableHead>Category</TableHead>
@@ -877,6 +888,9 @@ export default function AdminCourses() {
                           }
                         }} 
                       />
+                    </TableCell>
+                    <TableCell className="text-center font-mono font-bold text-xs text-blue-400">
+                      {c.course_number != null ? `#${c.course_number}` : "—"}
                     </TableCell>
                     <TableCell>
                       {c.thumbnail_url ? (
@@ -948,7 +962,7 @@ export default function AdminCourses() {
                   </TableRow>
                 )})}
                 {paged.length === 0 && (
-                  <TableRow><TableCell colSpan={12} className="text-center text-muted-foreground py-12">
+                  <TableRow><TableCell colSpan={13} className="text-center text-muted-foreground py-12">
                     <div className="flex flex-col items-center gap-2">
                       <Search className="h-10 w-10 text-[#334155]" />
                       <p>No courses found</p>
@@ -1038,7 +1052,20 @@ export default function AdminCourses() {
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-[#1E293B] border-[#334155]">
           <DialogHeader>
-            <DialogTitle>{editId ? "Edit Course" : "Add New Course"}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {editId ? (
+                <>
+                  <span>Edit Course</span>
+                  {form.course_number != null && (
+                    <Badge variant="outline" className="text-blue-400 border-blue-800 bg-blue-900/20 font-mono text-xs">
+                      #{form.course_number}
+                    </Badge>
+                  )}
+                </>
+              ) : (
+                "Add New Course"
+              )}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-1">
             {/* Section 1: Basic Info */}
