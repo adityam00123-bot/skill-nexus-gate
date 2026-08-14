@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/utils/fetchAllRows";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -86,10 +87,9 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     async function load() {
-      const [profilesRes, coursesRes, purchasesRes, subsRes, resellersRes, exchangeRes, sellRes, rolesRes, subHistoryRes] =
+      const [profilesRes, purchasesRes, subsRes, resellersRes, exchangeRes, sellRes, rolesRes, subHistoryRes] =
         await Promise.all([
           supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-          supabase.from("courses").select("*"),
           supabase.from("purchases").select("*").order("created_at", { ascending: false }),
           supabase.from("subscriptions").select("*").eq("status", "active"),
           supabase.from("reseller_applications").select("id, status").eq("status", "approved"),
@@ -99,8 +99,9 @@ export default function AdminDashboard() {
           (supabase as any).from("subscription_history").select("user_id, plan_name, action, amount, created_at").eq("action", "subscribed").not("amount", "is", null),
         ]);
 
+      const courses = await fetchAllRows("courses", "*");
+
       const profiles = profilesRes.data || [];
-      const courses = coursesRes.data || [];
       const purchases = purchasesRes.data || [];
       const roles = rolesRes.data || [];
       const subHistory = subHistoryRes.data || [];

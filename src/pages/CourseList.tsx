@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { courses as staticCourses } from "@/data/courses";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/utils/fetchAllRows";
 
 const CourseList = () => {
   const [search, setSearch] = useState("");
@@ -13,11 +14,11 @@ const CourseList = () => {
 
   useEffect(() => {
     const fetchCourses = async () => {
-      const { data } = await supabase
-        .from("courses")
-        .select("id, title")
-        .eq("is_published", true)
-        .or("is_deleted.eq.false,is_deleted.is.null");
+      const data = await fetchAllRows(
+        "courses",
+        "id, title",
+        (q: any) => q.eq("is_published", true).or("is_deleted.eq.false,is_deleted.is.null")
+      );
       if (data) setDbCourses(data);
     };
     fetchCourses();

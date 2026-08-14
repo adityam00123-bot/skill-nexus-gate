@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePurchaseContext } from "@/contexts/PurchaseContext";
 import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/utils/fetchAllRows";
 
 const SectionHeader = ({
   title,
@@ -76,11 +77,11 @@ const Index = () => {
   // Fetch real courses from Supabase
   useEffect(() => {
     const fetchCourses = async () => {
-      const { data } = await supabase
-        .from("courses")
-        .select("*")
-        .eq("is_published", true)
-        .or("is_deleted.eq.false,is_deleted.is.null");
+      const data = await fetchAllRows(
+        "courses",
+        "*",
+        (q: any) => q.eq("is_published", true).or("is_deleted.eq.false,is_deleted.is.null")
+      );
       if (data) setDbCourses(data.map(mapDbCourse));
     };
     fetchCourses();

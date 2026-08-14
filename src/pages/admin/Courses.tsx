@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { fetchAllRows } from "@/utils/fetchAllRows";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -101,16 +102,13 @@ export default function AdminCourses() {
   const fetchCourses = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: cData, error: cError } = await (supabase as any)
-        .from("courses")
-        .select("*")
-        .or("is_deleted.eq.false,is_deleted.is.null")
-        .order("created_at", { ascending: false });
-
-      if (cError) {
-        console.error("Error fetching courses:", cError);
-        return;
-      }
+      const cData = await fetchAllRows(
+        "courses",
+        "*",
+        (q: any) => q.or("is_deleted.eq.false,is_deleted.is.null"),
+        "created_at",
+        false
+      );
 
       const { data: pData, error: pError } = await supabase.from("purchases").select("*");
       if (pError) console.error("Error fetching purchases:", pError);

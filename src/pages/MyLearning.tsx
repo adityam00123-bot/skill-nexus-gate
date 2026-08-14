@@ -24,6 +24,7 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCourseById, courses, Course } from "@/data/courses";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/utils/fetchAllRows";
 
 // Simulated progress data (would come from DB in production)
 const getProgress = (courseId: string) => {
@@ -246,14 +247,12 @@ const MyLearning = () => {
     }
 
     const fetchSubscriptionCourses = async () => {
-      const { data: courseRows } = await supabase
-        .from("courses")
-        .select(`
-          id, title, description, short_description, instructor_name, thumbnail_url, price, original_price, category, duration_hours, total_lectures, level, telegram_link,
-          telegram_bot_channels(persistent_access_link)
-        `)
-        .eq("is_published", true)
-        .or("is_deleted.eq.false,is_deleted.is.null");
+      const courseRows = await fetchAllRows(
+        "courses",
+        `id, title, description, short_description, instructor_name, thumbnail_url, price, original_price, category, duration_hours, total_lectures, level, telegram_link,
+          telegram_bot_channels(persistent_access_link)`,
+        (q: any) => q.eq("is_published", true).or("is_deleted.eq.false,is_deleted.is.null")
+      );
 
       const mapped: Course[] = (courseRows || []).map((c: any) => {
         let persistentLink = null;

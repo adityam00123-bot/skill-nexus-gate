@@ -14,6 +14,7 @@ import CourseCard from "@/components/CourseCard";
 import { courses as staticCourses, type Course } from "@/data/courses";
 import { CATEGORIES, SUBCATEGORY_MAP } from "@/utils/courseConstants";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/utils/fetchAllRows";
 
 // Helper to check if a string is a UUID (i.e. a real Supabase course, not a dummy)
 const isUUID = (str: string) =>
@@ -64,11 +65,11 @@ const Courses = () => {
 
   useEffect(() => {
     const fetchPublished = async () => {
-      const { data, error } = await supabase
-        .from("courses")
-        .select("*")
-        .eq("is_published", true)
-        .or("is_deleted.eq.false,is_deleted.is.null");
+      const data = await fetchAllRows(
+        "courses",
+        "*",
+        (q: any) => q.eq("is_published", true).or("is_deleted.eq.false,is_deleted.is.null")
+      );
       if (data) setDbCourses(data.map(mapDbCourse));
     };
     fetchPublished();

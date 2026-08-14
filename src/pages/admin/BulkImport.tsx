@@ -10,6 +10,7 @@ import { Download, Upload, CheckCircle2, XCircle, Loader2, FileSpreadsheet, Imag
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { CATEGORIES, SUBCATEGORY_MAP, DEFAULT_LEARN, DEFAULT_REQUIREMENTS, DEFAULT_TAGS } from "@/utils/courseConstants";
+import { fetchAllRows } from "@/utils/fetchAllRows";
 import { Link } from "react-router-dom";
 import AIAssistModal from "@/components/admin/AIAssistModal";
 
@@ -285,10 +286,11 @@ export default function BulkImport() {
     setProgress(0);
 
     // Fetch all existing courses (non-deleted) with full records for comparison
-    const { data: existingCourses } = await (supabase as any)
-      .from("courses")
-      .select("*")
-      .or("is_deleted.eq.false,is_deleted.is.null");
+    const existingCourses = await fetchAllRows(
+      "courses",
+      "*",
+      (q: any) => q.or("is_deleted.eq.false,is_deleted.is.null")
+    );
 
     // Build a Map of lowercase title → full course record
     const courseMap = new Map<string, any>();
