@@ -72,10 +72,14 @@ export default function AdminCourses() {
   const [pubFilter, setPubFilter] = useState("all");
   const [featFilter, setFeatFilter] = useState("all");
   const [page, setPage] = useState(0);
+  const [perPage, setPerPage] = useState(20);
+  const [jumpPageInput, setJumpPageInput] = useState("");
   const [catInput, setCatInput] = useState("");
   const [subcatInput, setSubcatInput] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const perPage = 20;
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const { toast } = useToast();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -352,29 +356,50 @@ export default function AdminCourses() {
     }
   };
 
-  const handleBulkAction = async (action: "publish" | "unpublish" | "featured" | "delete") => {
-    if (selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds);
+  const executeBulkAction = async (action: "publish" | "unpublish" | "featured" | "unfeatured" | "delete", ids: string[]) => {
+    if (ids.length === 0) return;
     setToggling("bulk");
+    const BATCH_SIZE = 50;
+    const total = ids.length;
+
     try {
-      if (action === "publish") {
-        const { error } = await supabase.from("courses").update({ is_published: true }).in("id", ids);
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = ids.slice(i, i + BATCH_SIZE);
+        let error = null;
+
+        if (action === "publish") {
+          const res = await supabase.from("courses").update({ is_published: true }).in("id", batch);
+          error = res.error;
+        } else if (action === "unpublish") {
+          const res = await supabase.from("courses").update({ is_published: false }).in("id", batch);
+          error = res.error;
+        } else if (action === "featured") {
+          const res = await supabase.from("courses").update({ is_featured: true }).in("id", batch);
+          error = res.error;
+        } else if (action === "unfeatured") {
+          const res = await supabase.from("courses").update({ is_featured: false }).in("id", batch);
+          error = res.error;
+        } else if (action === "delete") {
+          const res = await (supabase as any).from("courses").update({ is_deleted: true, is_published: false }).in("id", batch);
+          error = res.error;
+        }
+
         if (error) throw error;
-        toast({ title: `${ids.length} courses published` });
-      } else if (action === "unpublish") {
-        const { error } = await supabase.from("courses").update({ is_published: false }).in("id", ids);
-        if (error) throw error;
-        toast({ title: `${ids.length} courses unpublished` });
-      } else if (action === "featured") {
-        const { error } = await supabase.from("courses").update({ is_featured: true }).in("id", ids);
-        if (error) throw error;
-        toast({ title: `${ids.length} courses featured` });
-      } else if (action === "delete") {
-        const { error } = await (supabase as any).from("courses").update({ is_deleted: true }).in("id", ids);
-        if (error) throw error;
-        toast({ title: `${ids.length} courses soft deleted` });
       }
+
+      const actionLabels: Record<string, string> = {
+        publish: "published",
+        unpublish: "unpublished",
+        featured: "featured",
+        unfeatured: "unfeatured",
+        delete: "moved to recycle bin",
+      };
+
+      toast({ title: `${total} courses ${actionLabels[action] || "updated"} successfully` });
       setSelectedIds(new Set());
+      setSelectAllMatching(false);
+      setBulkDeleteDialogOpen(false);
+      setDeleteConfirmText("");
       fetchCourses();
     } catch (err: any) {
       console.error("Bulk action failed:", err);
@@ -382,6 +407,25 @@ export default function AdminCourses() {
     } finally {
       setToggling(null);
     }
+  };
+
+  const handleBulkAction = async (action: "publish" | "unpublish" | "featured" | "unfeatured" | "delete") => {
+    let ids: string[] = [];
+    if (selectAllMatching) {
+      ids = filtered.map(c => c.id);
+    } else {
+      ids = Array.from(selectedIds);
+    }
+
+    if (ids.length === 0) return;
+
+    if (action === "delete") {
+      setDeleteConfirmText("");
+      setBulkDeleteDialogOpen(true);
+      return;
+    }
+
+    await executeBulkAction(action, ids);
   };
 
   const handleDuplicate = async (c: any) => {
@@ -613,21 +657,35 @@ export default function AdminCourses() {
     </div>
   );
 
+  const selectedCount = selectAllMatching ? filtered.length : selectedIds.size;
+  const allPagedSelected = paged.length > 0 && paged.every(x => selectedIds.has(x.id));
+  const somePagedSelected = paged.some(x => selectedIds.has(x.id)) && !allPagedSelected;
+
+  const resetSelection = () => {
+    setSelectedIds(new Set());
+    setSelectAllMatching(false);
+    setPage(0);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6"/> Courses ({filtered.length})</h1>
-        <div className="flex gap-2 flex-wrap">
-          {selectedIds.size > 0 && (
-            <div className="flex items-center gap-2 bg-[#1E293B] border border-[#334155] rounded-md px-2 mr-2">
-               <span className="text-sm text-green-400 font-semibold px-2">{selectedIds.size} Selected</span>
-               <div className="h-4 w-px bg-[#334155] mx-1"></div>
-               <Button size="sm" variant="ghost" className="h-8 px-2" disabled={toggling === "bulk"} onClick={() => handleBulkAction("publish")}><Eye className="h-4 w-4 mr-1"/> Publish</Button>
-               <Button size="sm" variant="ghost" className="h-8 px-2" disabled={toggling === "bulk"} onClick={() => handleBulkAction("unpublish")}><EyeOff className="h-4 w-4 mr-1"/> Unpublish</Button>
-               <Button size="sm" variant="ghost" className="h-8 px-2 text-yellow-500" disabled={toggling === "bulk"} onClick={() => handleBulkAction("featured")}><Star className="h-4 w-4 mr-1"/> Feature</Button>
-               <div className="h-4 w-px bg-[#334155] mx-1"></div>
-               <Button size="sm" variant="ghost" className="h-8 px-2 text-red-500 hover:text-red-400 hover:bg-red-500/10" disabled={toggling === "bulk"} onClick={() => handleBulkAction("delete")}><Trash2 className="h-4 w-4 mr-1"/> Bulk Delete</Button>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6"/> Courses ({filtered.length.toLocaleString()})</h1>
+        <div className="flex gap-2 flex-wrap items-center">
+          {selectedCount > 0 && (
+            <div className="flex items-center gap-1.5 bg-[#1E293B] border border-[#334155] rounded-md px-2 py-1 flex-wrap">
+               <span className="text-xs text-green-400 font-semibold px-1.5 py-0.5 bg-green-500/10 rounded">
+                 {selectedCount.toLocaleString()} Selected {selectAllMatching && "(All Matching)"}
+               </span>
+               <div className="h-4 w-px bg-[#334155] mx-0.5"></div>
+               <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={toggling === "bulk"} onClick={() => handleBulkAction("publish")}><Eye className="h-3.5 w-3.5 mr-1 text-green-400"/> Publish</Button>
+               <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={toggling === "bulk"} onClick={() => handleBulkAction("unpublish")}><EyeOff className="h-3.5 w-3.5 mr-1 text-slate-400"/> Unpublish</Button>
+               <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-yellow-500 hover:text-yellow-400" disabled={toggling === "bulk"} onClick={() => handleBulkAction("featured")}><Star className="h-3.5 w-3.5 mr-1"/> Feature</Button>
+               <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-slate-400 hover:text-slate-300" disabled={toggling === "bulk"} onClick={() => handleBulkAction("unfeatured")}>Unfeature</Button>
+               <div className="h-4 w-px bg-[#334155] mx-0.5"></div>
+               <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10" disabled={toggling === "bulk"} onClick={() => handleBulkAction("delete")}><Trash2 className="h-3.5 w-3.5 mr-1"/> Bulk Delete</Button>
+               <Button size="sm" variant="ghost" className="h-7 px-1.5 text-xs text-slate-400 hover:text-white" onClick={() => { setSelectedIds(new Set()); setSelectAllMatching(false); }}>✕</Button>
             </div>
           )}
           <Link to="/admin/bulk-import">
@@ -646,19 +704,19 @@ export default function AdminCourses() {
         <Card className="bg-[#1E293B] border-[#334155]">
           <CardContent className="p-4 flex flex-col justify-center gap-1">
             <p className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5"><BookOpen className="h-3 w-3" /> Total Courses</p>
-            <p className="text-xl font-bold text-white">{totalCourses}</p>
+            <p className="text-xl font-bold text-white">{totalCourses.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card className="bg-[#1E293B] border-[#334155]">
           <CardContent className="p-4 flex flex-col justify-center gap-1">
             <p className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5"><Eye className="h-3 w-3" /> Published</p>
-            <p className="text-xl font-bold text-green-400">{publishedCourses}</p>
+            <p className="text-xl font-bold text-green-400">{publishedCourses.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card className="bg-[#1E293B] border-[#334155]">
           <CardContent className="p-4 flex flex-col justify-center gap-1">
             <p className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5"><EyeOff className="h-3 w-3" /> Drafts</p>
-            <p className="text-xl font-bold text-muted-foreground">{draftCourses}</p>
+            <p className="text-xl font-bold text-muted-foreground">{draftCourses.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card className="bg-[#1E293B] border-[#334155]">
@@ -679,14 +737,14 @@ export default function AdminCourses() {
       <div className="flex gap-3 flex-wrap">
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search courses..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-10 bg-[#1E293B] border-[#334155]" />
+          <Input placeholder="Search courses..." value={search} onChange={(e) => { setSearch(e.target.value); resetSelection(); }} className="pl-10 bg-[#1E293B] border-[#334155]" />
         </div>
-        <Select value={catFilter} onValueChange={(v) => { setCatFilter(v); setSubcatFilter("all"); setPage(0); }}>
+        <Select value={catFilter} onValueChange={(v) => { setCatFilter(v); setSubcatFilter("all"); resetSelection(); }}>
           <SelectTrigger className="w-44 bg-[#1E293B] border-[#334155]"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent><SelectItem value="all">All Categories</SelectItem>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
         </Select>
         {/* Subcategory filter — show all subcats or filtered by selected category */}
-        <Select value={subcatFilter} onValueChange={(v) => { setSubcatFilter(v); setPage(0); }}>
+        <Select value={subcatFilter} onValueChange={(v) => { setSubcatFilter(v); resetSelection(); }}>
           <SelectTrigger className="w-48 bg-[#1E293B] border-[#334155]"><SelectValue placeholder="Subcategory" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Subcategories</SelectItem>
@@ -700,23 +758,55 @@ export default function AdminCourses() {
             }
           </SelectContent>
         </Select>
-        <Select value={levelFilter} onValueChange={(v) => { setLevelFilter(v); setPage(0); }}>
+        <Select value={levelFilter} onValueChange={(v) => { setLevelFilter(v); resetSelection(); }}>
           <SelectTrigger className="w-36 bg-[#1E293B] border-[#334155]"><SelectValue placeholder="Level" /></SelectTrigger>
           <SelectContent><SelectItem value="all">All Levels</SelectItem>{LEVELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
         </Select>
-        <Select value={pubFilter} onValueChange={(v) => { setPubFilter(v); setPage(0); }}>
+        <Select value={pubFilter} onValueChange={(v) => { setPubFilter(v); resetSelection(); }}>
           <SelectTrigger className="w-40 bg-[#1E293B] border-[#334155]"><SelectValue placeholder="Published" /></SelectTrigger>
           <SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="published">Published</SelectItem><SelectItem value="unpublished">Unpublished</SelectItem></SelectContent>
         </Select>
-        <Select value={featFilter} onValueChange={(v) => { setFeatFilter(v); setPage(0); }}>
+        <Select value={featFilter} onValueChange={(v) => { setFeatFilter(v); resetSelection(); }}>
           <SelectTrigger className="w-36 bg-[#1E293B] border-[#334155]"><SelectValue placeholder="Featured" /></SelectTrigger>
           <SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="featured">Featured</SelectItem><SelectItem value="not-featured">Not Featured</SelectItem></SelectContent>
         </Select>
       </div>
 
-      {/* Table */}
+      {/* Table Card */}
       <Card className="bg-[#1E293B] border-[#334155]">
         <CardContent className="p-0 overflow-x-auto">
+          {/* Gmail-style select all matching banner */}
+          {(allPagedSelected || selectAllMatching) && filtered.length > paged.length && (
+            <div className="bg-[#0F172A] border-b border-[#334155] py-2.5 px-4 text-xs sm:text-sm text-center text-slate-300 flex items-center justify-center gap-2 flex-wrap">
+              {!selectAllMatching ? (
+                <>
+                  <span>All <strong>{paged.length}</strong> courses on this page are selected.</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectAllMatching(true)}
+                    className="text-blue-400 font-semibold underline underline-offset-2 hover:text-blue-300 cursor-pointer ml-1"
+                  >
+                    Select all {filtered.length.toLocaleString()} courses matching current filters
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>All <strong>{filtered.length.toLocaleString()}</strong> courses matching current filters are selected.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedIds(new Set());
+                      setSelectAllMatching(false);
+                    }}
+                    className="text-red-400 font-semibold underline underline-offset-2 hover:text-red-300 cursor-pointer ml-1"
+                  >
+                    Clear selection
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {loading ? (
             <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full bg-[#334155]" />)}</div>
           ) : (
@@ -725,13 +815,21 @@ export default function AdminCourses() {
                 <TableRow className="border-[#334155]">
                   <TableHead className="w-10">
                     <Checkbox 
-                      checked={selectedIds.size === paged.length && paged.length > 0} 
+                      checked={selectAllMatching || (allPagedSelected ? true : (somePagedSelected ? "indeterminate" : false))} 
                       onCheckedChange={(c) => {
-                        if (c) setSelectedIds(new Set([...selectedIds, ...paged.map(x => x.id)]));
-                        else {
+                        if (c) {
                           const newSet = new Set(selectedIds);
-                          paged.forEach(x => newSet.delete(x.id));
+                          paged.forEach(x => newSet.add(x.id));
                           setSelectedIds(newSet);
+                        } else {
+                          if (selectAllMatching) {
+                            setSelectedIds(new Set());
+                            setSelectAllMatching(false);
+                          } else {
+                            const newSet = new Set(selectedIds);
+                            paged.forEach(x => newSet.delete(x.id));
+                            setSelectedIds(newSet);
+                          }
                         }
                       }} 
                     />
@@ -761,13 +859,24 @@ export default function AdminCourses() {
                   const display_rating = dbRating !== null ? dbRating : avgRating;
                   
                   return (
-                  <TableRow key={c.id} className="border-[#334155] hover:bg-[#334155]/50 transition-colors">
+                  <TableRow key={c.id} className={`border-[#334155] hover:bg-[#334155]/50 transition-colors ${(selectAllMatching || selectedIds.has(c.id)) ? "bg-blue-500/5" : ""}`}>
                     <TableCell>
-                      <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={(ch) => {
-                        const newSet = new Set(selectedIds);
-                        if (ch) newSet.add(c.id); else newSet.delete(c.id);
-                        setSelectedIds(newSet);
-                      }} />
+                      <Checkbox 
+                        checked={selectAllMatching || selectedIds.has(c.id)} 
+                        onCheckedChange={(ch) => {
+                          if (selectAllMatching) {
+                            // Materialize all filtered IDs and toggle this one off
+                            const materialized = new Set(filtered.map(x => x.id));
+                            if (ch) materialized.add(c.id); else materialized.delete(c.id);
+                            setSelectedIds(materialized);
+                            setSelectAllMatching(false);
+                          } else {
+                            const newSet = new Set(selectedIds);
+                            if (ch) newSet.add(c.id); else newSet.delete(c.id);
+                            setSelectedIds(newSet);
+                          }
+                        }} 
+                      />
                     </TableCell>
                     <TableCell>
                       {c.thumbnail_url ? (
@@ -852,14 +961,78 @@ export default function AdminCourses() {
         </CardContent>
       </Card>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)} className="border-[#334155]">Previous</Button>
-          <span className="text-sm text-muted-foreground">Page {page + 1} of {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="border-[#334155]">Next</Button>
+      {/* Pagination Controls */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-2 px-1">
+        {/* Left: Rows Per Page & Counter */}
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs">Rows per page:</span>
+            <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setPage(0); }}>
+              <SelectTrigger className="w-[72px] h-8 bg-[#1E293B] border-[#334155] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1E293B] border-[#334155] text-white">
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+                <SelectItem value="250">250</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <span className="text-xs text-slate-400">
+            Showing {filtered.length === 0 ? 0 : (page * perPage + 1).toLocaleString()}–{Math.min((page + 1) * perPage, filtered.length).toLocaleString()} of {filtered.length.toLocaleString()} courses
+          </span>
         </div>
-      )}
+
+        {/* Right: Page Navigation & Jump to Page */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-3 flex-wrap justify-center">
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(0)} className="h-8 px-2 border-[#334155] text-xs" title="First page">« First</Button>
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)} className="h-8 px-2.5 border-[#334155] text-xs">Prev</Button>
+              <span className="text-xs px-2 text-muted-foreground whitespace-nowrap">Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong></span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="h-8 px-2.5 border-[#334155] text-xs">Next</Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} className="h-8 px-2 border-[#334155] text-xs" title="Last page">Last »</Button>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>Go to:</span>
+              <Input
+                type="number"
+                min={1}
+                max={totalPages}
+                placeholder={`1-${totalPages}`}
+                value={jumpPageInput}
+                onChange={(e) => setJumpPageInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const target = parseInt(jumpPageInput, 10);
+                    if (!isNaN(target) && target >= 1 && target <= totalPages) {
+                      setPage(target - 1);
+                      setJumpPageInput("");
+                    }
+                  }
+                }}
+                className="w-16 h-8 bg-[#1E293B] border-[#334155] text-xs text-center px-1 text-white"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2.5 text-xs border-[#334155]"
+                onClick={() => {
+                  const target = parseInt(jumpPageInput, 10);
+                  if (!isNaN(target) && target >= 1 && target <= totalPages) {
+                    setPage(target - 1);
+                    setJumpPageInput("");
+                  }
+                }}
+              >
+                Go
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Add/Edit Modal */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
@@ -1171,16 +1344,67 @@ export default function AdminCourses() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
+      {/* Single Course Delete Confirmation */}
       <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
-        <AlertDialogContent className="bg-[#1E293B] border-[#334155]">
+        <AlertDialogContent className="bg-[#1E293B] border-[#334155] text-white">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Course?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone. The course will be permanently removed.</AlertDialogDescription>
+            <AlertDialogTitle>Move Course to Recycle Bin?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-300">
+              The course will be moved to the Recycle Bin and hidden from the public website. You can restore it anytime.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-[#334155]">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+            <AlertDialogCancel className="border-[#334155] bg-transparent text-white hover:bg-[#334155]">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-white">Move to Trash</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Confirmation with Safety Typing */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={(o) => !o && setBulkDeleteDialogOpen(false)}>
+        <AlertDialogContent className="bg-[#1E293B] border-[#334155] text-white max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-400 flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Bulk Move to Recycle Bin
+            </AlertDialogTitle>
+            <div className="text-slate-300 text-sm space-y-3 pt-2">
+              <p>
+                You are about to soft-delete <strong>{selectedCount.toLocaleString()}</strong> course{selectedCount > 1 ? "s" : ""}. They will be moved to the Recycle Bin and removed from the public website.
+              </p>
+              {selectedCount > 20 ? (
+                <div className="space-y-2 pt-2 border-t border-[#334155]">
+                  <p className="text-xs text-amber-300 font-semibold">
+                    ⚠️ Safety Confirmation: Type <span className="bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded font-mono">DELETE</span> below to confirm this bulk operation.
+                  </p>
+                  <Input
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder="Type DELETE to confirm"
+                    className="bg-[#0F172A] border-[#334155] text-white font-mono"
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">You can restore them later from the Recycle Bin if needed.</p>
+              )}
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={() => { setBulkDeleteDialogOpen(false); setDeleteConfirmText(""); }} 
+              className="border-[#334155] bg-transparent text-white hover:bg-[#334155]"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              disabled={selectedCount > 20 && deleteConfirmText !== "DELETE"}
+              onClick={() => {
+                const ids = selectAllMatching ? filtered.map(c => c.id) : Array.from(selectedIds);
+                executeBulkAction("delete", ids);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {toggling === "bulk" ? <><Loader2 className="h-4 w-4 mr-1 animate-spin"/> Deleting...</> : `Move ${selectedCount.toLocaleString()} to Trash`}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
