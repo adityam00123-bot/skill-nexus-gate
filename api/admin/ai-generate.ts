@@ -29,10 +29,9 @@ export default async function handler(req: any, res: any) {
 
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // Using the user-requested latest model
     const model = genAI.getGenerativeModel({
-      model: "gemini-3.6-flash",
-      tools: [{ googleSearch: {} }],
+      model: "gemini-1.5-flash",
+      tools: [{ googleSearch: {} } as any],
     });
 
     const prompt = `
@@ -90,7 +89,6 @@ Output exactly this JSON structure (and nothing else, do not use markdown code b
     });
 
     const responseText = result.response.text();
-    // In case the model returns markdown code block for JSON despite instructions
     const cleanedText = responseText.replace(/```json\n?|\n?```/g, "").trim();
     
     let jsonOutput;

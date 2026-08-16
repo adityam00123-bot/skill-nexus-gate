@@ -25,7 +25,7 @@ export default async function handler(req: any, res: any) {
     // 1. Get user profile
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('full_name, email')
+      .select('full_name, email, telegram_username')
       .eq('id', userId)
       .single();
 
@@ -62,7 +62,7 @@ export default async function handler(req: any, res: any) {
       zap_key: ZAPUPI_API_KEY,
       order_id: zapUpiOrderId,
       amount: amount.toString(),
-      customer_mobile: profile.telegram_username || "9999999999", // ZapUPI expects mobile, using dummy if not available
+      customer_mobile: (profile as any)?.telegram_username || "9999999999",
       remark: `WalletTopup|${userId}`,
       webhook_url: `https://courseverse-beta.vercel.app/api/zapupi-webhook`,
       success_url: `https://courseverse-beta.vercel.app/wallet?order_id=${zapUpiOrderId}`,
