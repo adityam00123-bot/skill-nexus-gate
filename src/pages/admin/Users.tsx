@@ -72,6 +72,20 @@ export default function AdminUsers() {
   const [userTransactions, setUserTransactions] = useState<any[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
 
+  // Admin Telegram Identity Controls
+  const [editingTg, setEditingTg] = useState(false);
+  const [editTgUsername, setEditTgUsername] = useState("");
+  const [editTgUserId, setEditTgUserId] = useState("");
+  const [savingTg, setSavingTg] = useState(false);
+
+  const handleOpenUserProfile = (u: UserRow) => {
+    setViewUser(u);
+    setEditTgUsername(u.telegram_username ? u.telegram_username.replace(/^@/, '') : "");
+    setEditTgUserId(u.telegram_id ? String(u.telegram_id) : (u.latest_telegram_user_id ? String(u.latest_telegram_user_id) : ""));
+    setEditingTg(false);
+    setActiveTab("basic");
+  };
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -362,6 +376,115 @@ export default function AdminUsers() {
     }
   };
 
+  const handleAdminSaveTelegram = async () => {
+    if (!viewUser) return;
+    setSavingTg(true);
+    try {
+      const cleanUsername = editTgUsername ? editTgUsername.replace(/^@/, '').trim() : null;
+      const cleanTgId = editTgUserId ? Number(editTgUserId) : null;
+
+      if (editTgUserId && isNaN(cleanTgId!)) {
+        toast({ title: "Invalid Telegram ID", description: "Telegram User ID must be a numeric value.", variant: "destructive" });
+        setSavingTg(false);
+        return;
+      }
+
+      // Update profiles table
+      const { error: pErr } = await supabase
+        .from('profiles')
+        .update({
+          telegram_username: cleanUsername,
+          telegram_id: cleanTgId
+        })
+        .eq('id', viewUser.id);
+
+      if (pErr) throw pErr;
+
+      // Cascade update to telegram_access table for course bindings
+      await supabase
+        .from('telegram_access')
+        .update({
+          joined_telegram_username: cleanUsername,
+          joined_telegram_user_id: cleanTgId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', viewUser.id);
+
+      // Update local state
+      const updatedUser = {
+        ...viewUser,
+        telegram_username: cleanUsername,
+        telegram_id: cleanTgId,
+        latest_telegram_user_id: cleanTgId
+      };
+
+      setViewUser(updatedUser);
+      setUsers(prev => prev.map(u => u.id === viewUser.id ? updatedUser : u));
+      setEditingTg(false);
+
+      toast({
+        title: "Telegram Identity Updated ✅",
+        description: `Successfully updated Telegram account for ${viewUser.full_name || viewUser.email}. Bot access synced.`
+      });
+    } catch (err: any) {
+      console.error("handleAdminSaveTelegram error:", err);
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingTg(false);
+    }
+  };
+
+  const handleAdminUnlinkTelegram = async () => {
+    if (!viewUser) return;
+    setSavingTg(true);
+    try {
+      // 1. Clear profiles
+      const { error: pErr } = await supabase
+        .from('profiles')
+        .update({
+          telegram_username: null,
+          telegram_id: null
+        })
+        .eq('id', viewUser.id);
+
+      if (pErr) throw pErr;
+
+      // 2. Clear telegram_access bindings
+      await supabase
+        .from('telegram_access')
+        .update({
+          joined_telegram_username: null,
+          joined_telegram_user_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', viewUser.id);
+
+      // 3. Update local state
+      const updatedUser = {
+        ...viewUser,
+        telegram_username: null,
+        telegram_id: null,
+        latest_telegram_user_id: null
+      };
+
+      setViewUser(updatedUser);
+      setUsers(prev => prev.map(u => u.id === viewUser.id ? updatedUser : u));
+      setEditTgUsername("");
+      setEditTgUserId("");
+      setEditingTg(false);
+
+      toast({
+        title: "Telegram Unlinked 🔄",
+        description: `Telegram identity removed. The user can now connect a fresh Telegram account.`
+      });
+    } catch (err: any) {
+      console.error("handleAdminUnlinkTelegram error:", err);
+      toast({ title: "Unlink Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingTg(false);
+    }
+  };
+
   // derived stats
   const totalUsers = users.length;
   const totalRevenue = users.reduce((sum, u) => sum + u.total_spent, 0);
@@ -505,7 +628,7 @@ export default function AdminUsers() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => { setViewUser(u); setActiveTab("basic"); }} className="h-8 w-8" title="View Details"><Eye className="h-4 w-4 text-blue-400" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenUserProfile(u)} className="h-8 w-8" title="View Details"><Eye className="h-4 w-4 text-blue-400" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => setRoleDialog({ isOpen: true, user: u })} className="h-8 w-8" title="Change Role"><Shield className="h-4 w-4 text-purple-400" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => setNotifyDialog({ isOpen: true, user: u })} className="h-8 w-8" title="Send Notification"><Send className="h-4 w-4 text-primary" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => setBlockDialog({ isOpen: true, user: u })} className="h-8 w-8" title={u.is_blocked ? "Unblock User" : "Block User"}><Ban className={`h-4 w-4 ${u.is_blocked ? "text-green-400" : "text-orange-400"}`} /></Button>
@@ -597,16 +720,103 @@ export default function AdminUsers() {
                       <p className="text-xs text-muted-foreground uppercase">Joined Date</p>
                       <p className="text-sm">{new Date(viewUser.created_at).toLocaleString()}</p>
                     </CardContent></Card>
-                    <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
-                      <p className="text-xs text-muted-foreground uppercase">Telegram Username</p>
-                      <p className="text-sm font-medium text-blue-400">{viewUser.telegram_username ? `@${viewUser.telegram_username.replace(/^@/, '')}` : "Not Set"}</p>
-                    </CardContent></Card>
-                    <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
-                      <p className="text-xs text-muted-foreground uppercase">Telegram User ID (Permanent)</p>
-                      <p className="font-mono text-sm font-medium text-blue-300">
-                        {viewUser.telegram_id ? String(viewUser.telegram_id) : (viewUser.latest_telegram_user_id ? String(viewUser.latest_telegram_user_id) : "Not Set")}
-                      </p>
-                    </CardContent></Card>
+
+                    {/* Admin Telegram Controls & Live Override */}
+                    <Card className="bg-[#0F172A] border-[#334155] md:col-span-2">
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Send className="h-4 w-4 text-primary" />
+                            <p className="text-sm font-semibold text-white">Telegram Identity & Access Control</p>
+                          </div>
+                          {!editingTg ? (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-[#334155] hover:bg-[#1E293B] text-foreground"
+                                onClick={() => setEditingTg(true)}
+                              >
+                                ✏️ Edit Telegram
+                              </Button>
+                              {(viewUser.telegram_id || viewUser.telegram_username) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                                  onClick={handleAdminUnlinkTelegram}
+                                  disabled={savingTg}
+                                >
+                                  🔄 Unlink / Reset
+                                </Button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                className="h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                                onClick={handleAdminSaveTelegram}
+                                disabled={savingTg}
+                              >
+                                {savingTg ? "Saving..." : "💾 Save Changes"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-muted-foreground hover:text-white"
+                                onClick={() => setEditingTg(false)}
+                                disabled={savingTg}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        {editingTg ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Telegram Username (@handle)</Label>
+                              <Input
+                                value={editTgUsername}
+                                onChange={(e) => setEditTgUsername(e.target.value.replace(/^@/, ''))}
+                                placeholder="e.g. CourseVersehere"
+                                className="h-8 text-sm bg-[#1E293B] border-[#334155] text-white"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Telegram User ID (Numeric ID)</Label>
+                              <Input
+                                value={editTgUserId}
+                                onChange={(e) => setEditTgUserId(e.target.value.trim())}
+                                placeholder="e.g. 8383627571"
+                                className="h-8 text-sm font-mono bg-[#1E293B] border-[#334155] text-white"
+                              />
+                            </div>
+                            <p className="text-[11px] text-muted-foreground md:col-span-2">
+                              💡 Updating these fields will immediately update the user's bot access and revoke delivery on their old Telegram account.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div className="p-3 rounded-lg bg-[#1E293B]/60 border border-[#334155]">
+                              <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Telegram Username</span>
+                              <span className="font-medium text-sm text-blue-400">
+                                {viewUser.telegram_username ? `@${viewUser.telegram_username.replace(/^@/, '')}` : "Not Set"}
+                              </span>
+                            </div>
+                            <div className="p-3 rounded-lg bg-[#1E293B]/60 border border-[#334155]">
+                              <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Telegram User ID (Permanent)</span>
+                              <span className="font-mono font-medium text-sm text-blue-300">
+                                {viewUser.telegram_id ? String(viewUser.telegram_id) : (viewUser.latest_telegram_user_id ? String(viewUser.latest_telegram_user_id) : "Not Set")}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
                     <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
                       <p className="text-xs text-muted-foreground uppercase">Telegram Name</p>
                       <p className="text-sm font-medium">{viewUser.telegram_name || viewUser.full_name || "Not Set"}</p>
@@ -615,7 +825,7 @@ export default function AdminUsers() {
                       <p className="text-xs text-muted-foreground uppercase">UPI ID</p>
                       <p className="text-sm font-medium">{viewUser.upi_id || "Not Set"}</p>
                     </CardContent></Card>
-                    <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
+                    <Card className="bg-[#0F172A] border-[#334155] md:col-span-2"><CardContent className="p-4 space-y-1">
                       <p className="text-xs text-muted-foreground uppercase">Paytm Number</p>
                       <p className="text-sm font-medium">{viewUser.paytm_number || "Not Set"}</p>
                     </CardContent></Card>
