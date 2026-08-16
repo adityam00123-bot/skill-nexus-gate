@@ -13,7 +13,8 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import {
   Camera, User, Lock, Eye, EyeOff, Shield, CreditCard,
-  Crown, Bell, Send, ChevronRight, CheckCircle2, ExternalLink, Bot
+  Crown, Bell, Send, ChevronRight, CheckCircle2, ExternalLink, Bot,
+  Mail, HelpCircle
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -265,8 +266,22 @@ const AccountSettings = () => {
                   <Label>Telegram Username</Label>
                   <div className="relative">
                     <Send className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input value={telegramUsername} onChange={(e) => setTelegramUsername(e.target.value)} placeholder="@username" className="pl-10" maxLength={50} />
+                    <Input
+                      value={telegramUsername}
+                      onChange={(e) => setTelegramUsername(e.target.value)}
+                      placeholder="@username"
+                      className="pl-10"
+                      maxLength={50}
+                      disabled={!!telegramId}
+                    />
                   </div>
+                  {telegramId ? (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Verified and locked to your account
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Used for matching your Telegram identity</p>
+                  )}
                 </div>
                 <Button onClick={handleSaveProfile} disabled={saving}>
                   {saving ? "Saving..." : "Save Changes"}
@@ -280,12 +295,12 @@ const AccountSettings = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Bot className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-base font-semibold">Telegram Bot Delivery</CardTitle>
+                    <CardTitle className="text-base font-semibold">Telegram Delivery Bot</CardTitle>
                   </div>
                   {telegramId ? (
                     <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 flex items-center gap-1">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      Connected
+                      Connected & Verified
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20">
@@ -309,27 +324,53 @@ const AccountSettings = () => {
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Your account is connected to our delivery system. Open the bot anytime to receive your course materials.
-                    </p>
+                    
                     <div className="flex flex-wrap gap-2.5 pt-1">
                       <Button
                         type="button"
-                        className="gap-2"
+                        className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
                         onClick={() => window.open("https://t.me/CourseVerseofficialbot", "_blank")}
                       >
                         <Send className="h-4 w-4" />
                         Open My Courses Bot
                         <ExternalLink className="h-3.5 w-3.5 opacity-70" />
                       </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleConnectTelegram}
-                        disabled={connectingTelegram}
-                      >
-                        {connectingTelegram ? "Generating link..." : "Reconnect / Change Telegram"}
-                      </Button>
+                    </div>
+
+                    {/* Security Notice Box */}
+                    <div className="rounded-lg bg-card border border-border/80 p-4 text-xs space-y-2.5 mt-3">
+                      <div className="flex items-center gap-2 text-foreground font-semibold">
+                        <Shield className="h-4 w-4 text-primary" />
+                        <span>Account Protection Active</span>
+                      </div>
+                      <p className="text-muted-foreground leading-relaxed">
+                        For account security and fraud prevention, your verified Telegram ID is permanently bound to this CourseVerse account. To transfer or update your registered Telegram account, please contact our support team.
+                      </p>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <a
+                          href="https://t.me/courseversesupport"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
+                        >
+                          <Send className="h-3.5 w-3.5 text-primary" />
+                          Telegram Support
+                        </a>
+                        <Link
+                          to="/contact"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
+                        >
+                          <Mail className="h-3.5 w-3.5 text-primary" />
+                          Email Support
+                        </Link>
+                        <Link
+                          to="/help"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
+                        >
+                          <HelpCircle className="h-3.5 w-3.5 text-primary" />
+                          Help Center
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 ) : (

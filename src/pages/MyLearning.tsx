@@ -32,6 +32,31 @@ const getProgress = (courseId: string) => {
   return hash % 100;
 };
 
+const openTelegramCourseAccess = async () => {
+  try {
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session) {
+      window.open("https://t.me/CourseVerseofficialbot", "_blank");
+      return;
+    }
+    const res = await fetch("/api/telegram/generate-link-token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+    const data = await res.json();
+    if (data.success && data.url) {
+      window.open(data.url, "_blank");
+    } else {
+      window.open("https://t.me/CourseVerseofficialbot", "_blank");
+    }
+  } catch {
+    window.open("https://t.me/CourseVerseofficialbot", "_blank");
+  }
+};
+
 const CourseRow = ({
   course,
   progress,
@@ -92,23 +117,14 @@ const CourseRow = ({
         <div className="mt-2 flex flex-wrap gap-2">
           <Button
             size="sm"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs gap-1.5 h-8"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs gap-1.5 h-8 font-medium shadow-sm"
+            onClick={(e) => {
+              e.preventDefault();
+              openTelegramCourseAccess();
+            }}
           >
-            <Play className="h-3.5 w-3.5" /> Resume Learning
+            <MessageCircle className="h-3.5 w-3.5" /> View Course
           </Button>
-          {(course.persistentAccessLink || course.telegramLink) && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-primary/20 text-primary hover:bg-primary/10 text-xs gap-1.5 h-8"
-              onClick={(e) => {
-                e.preventDefault();
-                window.open(course.persistentAccessLink || course.telegramLink, "_blank");
-              }}
-            >
-              <MessageCircle className="h-3.5 w-3.5" /> Open Telegram Channel
-            </Button>
-          )}
         </div>
       )}
     </div>

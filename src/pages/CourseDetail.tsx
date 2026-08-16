@@ -104,9 +104,37 @@ const CourseDetail = () => {
   const [courseSections, setCourseSections] = useState<any[]>([]);
   const [mentorCourses, setMentorCourses] = useState<any[]>([]);
   const [relatedCourses, setRelatedCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [persistentAccessLink, setPersistentAccessLink] = useState<string | null>(null);
+  const [connectingTelegram, setConnectingTelegram] = useState(false);
+
+  const handleViewCourse = async () => {
+    setConnectingTelegram(true);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) {
+        window.open('https://t.me/CourseVerseofficialbot', '_blank');
+        return;
+      }
+      const res = await fetch('/api/telegram/generate-link-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        window.open(data.url, '_blank');
+      } else {
+        window.open('https://t.me/CourseVerseofficialbot', '_blank');
+      }
+    } catch {
+      window.open('https://t.me/CourseVerseofficialbot', '_blank');
+    } finally {
+      setConnectingTelegram(false);
+    }
+  };
 
   // Map a Supabase course row to the frontend Course type
   const mapDbCourse = (row: any) => ({
@@ -627,21 +655,17 @@ const CourseDetail = () => {
                       <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 text-center">
                         <CheckCircle className="h-8 w-8 text-primary mx-auto mb-2" />
                         <p className="font-semibold text-foreground">{purchased ? "You own this course" : "Included in Premium"}</p>
-                        <p className="text-xs text-muted-foreground mt-1">Access via Telegram below</p>
+                        <p className="text-xs text-muted-foreground mt-1">Access your lectures & materials anytime</p>
                       </div>
-                      {persistentAccessLink ? (
-                        <a href={persistentAccessLink} target="_blank" rel="noopener noreferrer">
-                          <Button size="lg" className="w-full bg-[#0088cc] text-white hover:bg-[#0088cc]/90 font-semibold">
-                            <MessageCircle className="mr-2 h-5 w-5" /> View Course
-                          </Button>
-                        </a>
-                      ) : course.telegram_link && (
-                        <a href={course.telegram_link} target="_blank" rel="noopener noreferrer">
-                          <Button size="lg" className="w-full bg-info text-foreground hover:bg-info/90 font-semibold">
-                            <MessageCircle className="mr-2 h-5 w-5" /> View Course
-                          </Button>
-                        </a>
-                      )}
+                      <Button
+                        size="lg"
+                        onClick={handleViewCourse}
+                        disabled={connectingTelegram}
+                        className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shadow-md gap-2"
+                      >
+                        <MessageCircle className="h-5 w-5" />
+                        {connectingTelegram ? "Opening..." : "View Course"}
+                      </Button>
                     </div>
                   ) : (
                     <>

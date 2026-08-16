@@ -74,7 +74,7 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
     <div className="mt-3 space-y-2.5 p-3.5 bg-primary/5 border border-primary/20 rounded-lg text-left">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-          <MessageCircle className="h-4 w-4 text-primary" /> Telegram Bot Delivery
+          <MessageCircle className="h-4 w-4 text-primary" /> Telegram Delivery
         </span>
         {isLinked ? (
           <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
@@ -82,12 +82,12 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
           </span>
         ) : (
           <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-            1-Click Connect
+            Instant Access
           </span>
         )}
       </div>
       <p className="text-xs text-muted-foreground leading-relaxed">
-        Receive this course directly in your Telegram via our automated delivery bot with content protection and high-speed streaming.
+        Access your lectures and course materials directly with high-speed playback and content protection.
       </p>
       <Button
         size="sm"
@@ -96,7 +96,7 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
         className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-medium shadow-sm gap-2"
       >
         <MessageCircle className="h-4 w-4" />
-        {connecting ? "Opening Bot..." : "Access Course on Telegram Bot"}
+        {connecting ? "Opening..." : "View Course"}
       </Button>
     </div>
   );
