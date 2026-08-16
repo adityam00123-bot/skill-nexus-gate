@@ -321,6 +321,17 @@ export default async function handler(req: any, res: any) {
           }
 
           if (course) {
+            // Re-upload support: Clean old video logs and reset stats so only the new batch is counted!
+            await supabase
+              .from('course_video_log')
+              .delete()
+              .eq('course_id', course.id);
+
+            await supabase
+              .from('courses')
+              .update({ total_lectures: 0, total_materials: 0, duration_hours: 0 })
+              .eq('id', course.id);
+
             await supabase
               .from('telegram_ingestion_state')
               .upsert({
