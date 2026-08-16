@@ -25,178 +25,79 @@ const isUUID = (str: string) => {
 };
 
 function TelegramAccessCard({ course, user }: { course: any, user: any }) {
-  const [loading, setLoading] = useState(true);
-  const [invite, setInvite] = useState<any>(null);
-  const [joined, setJoined] = useState(false);
-  const [persistentLink, setPersistentLink] = useState<string | null>(null);
-  const [tgIdentity, setTgIdentity] = useState<{username: string | null, id: number | null} | null>(null);
-  const [verifying, setVerifying] = useState(false);
-  const hasFetched = useRef(false);
-
-  // if dummy course with static link, just show it
-  if (!isUUID(course.id) && course.telegramLink) {
-    return (
-      <div className="mt-3">
-        <a href={course.telegramLink} target="_blank" rel="noopener noreferrer" className="block">
-          <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white">
-            <MessageCircle className="mr-2 h-4 w-4" /> Access Course on Telegram
-          </Button>
-        </a>
-      </div>
-    );
-  }
+  const [connecting, setConnecting] = useState(false);
+  const [isLinked, setIsLinked] = useState(false);
+  const [telegramId, setTelegramId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!isUUID(course.id)) {
-      setLoading(false);
-      return;
-    }
-
-    // Prevent duplicate API calls on re-render / tab switch
-    if (hasFetched.current) return;
-    hasFetched.current = true;
-
-    let pollInterval: any;
-
-    const fetchInvite = async () => {
-      try {
-        const res = await fetch('/api/telegram/generate-invite', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: user.id, course_id: course.id })
-        });
-        const data = await res.json();
-        if (data.success && data.already_joined) {
-          setJoined(true);
-          if (data.persistent_access_link) setPersistentLink(data.persistent_access_link);
-        } else if (data.success && data.invite_link) {
-          setInvite(data);
-
-          pollInterval = setInterval(async () => {
-            // Poll Supabase for join status
-            const { data: access } = await supabase
-              .from('telegram_access')
-              .select('link_used, joined_telegram_user_id, joined_telegram_username')
-              .eq('invite_link', data.invite_link)
-              .maybeSingle();
-              
-            if (access?.link_used) {
-              setJoined(true);
-              setTgIdentity({
-                id: access.joined_telegram_user_id,
-                username: access.joined_telegram_username
-              });
-              clearInterval(pollInterval);
-            }
-          }, 3000);
+    if (!user) return;
+    supabase
+      .from('profiles')
+      .select('telegram_id, telegram_username')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.telegram_id) {
+          setIsLinked(true);
+          setTelegramId(data.telegram_id);
         }
-      } catch (err) {
-        console.error("Failed to fetch invite", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchInvite();
-    
-    return () => {
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, [course.id, user.id]);
+      });
+  }, [user]);
 
-  const handleVerify = async () => {
-    setVerifying(true);
+  const handleOpenBot = async () => {
+    if (!user) return;
+    setConnecting(true);
     try {
-      const res = await fetch('/api/telegram/verify-join', {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch('/api/telegram/generate-link-token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, course_id: course.id })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`
+        }
       });
       const data = await res.json();
-      if (data.success && data.joined) {
-        setJoined(true);
-        setTgIdentity({
-          username: data.telegram_username,
-          id: data.telegram_user_id
-        });
-        toast.success("Join verified successfully!");
+      if (data.success && data.url) {
+        window.open(data.url, '_blank');
+        toast.success("Telegram Bot opened! Click 'Start' to receive your course.");
       } else {
-        toast.error("No join detected yet — please join first, then click Verify.");
+        window.open('https://t.me/CourseVerseofficialbot', '_blank');
       }
-    } catch (err) {
-      toast.error("Verification failed, please try again.");
+    } catch {
+      window.open('https://t.me/CourseVerseofficialbot', '_blank');
     } finally {
-      setVerifying(false);
+      setConnecting(false);
     }
   };
 
-  if (joined) {
-    return (
-      <div className="mt-3 space-y-2 text-center p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-        <p className="text-green-500 text-sm font-semibold flex items-center justify-center gap-2">
-          <CheckCircle className="h-4 w-4" /> Joined successfully!
-        </p>
-        {tgIdentity?.id && (
-          <p className="text-xs text-muted-foreground mb-2">
-            Verified: joined as {tgIdentity.username ? `@${tgIdentity.username}` : 'user'} (ID: {tgIdentity.id})
-          </p>
-        )}
-        <div className="flex gap-2 mt-2">
-          {persistentLink && (
-            <a href={persistentLink} target="_blank" rel="noopener noreferrer" className="block flex-1">
-              <Button size="sm" variant="outline" className="w-full font-semibold border-[#0088cc] text-[#0088cc] hover:bg-[#0088cc]/10">
-                <MessageCircle className="mr-2 h-4 w-4" /> Open Telegram
-              </Button>
-            </a>
-          )}
-          <Link to={`/course/${course.id}`} className="block flex-1">
-            <Button size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold">
-              Start Learning
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return <div className="mt-3 flex justify-center py-2"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
-  }
-
-  if (invite) {
-    return (
-      <div className="mt-3 space-y-3">
-        <div className="p-3 bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/20 rounded-lg text-sm text-center">
-          <p className="text-[hsl(var(--warning))] font-medium flex items-center justify-center gap-1.5">
-            <span className="text-lg">⚠️</span> Join Now — Do NOT share this link with anyone. Once someone joins using this link, it cannot be reassigned or changed to a different Telegram account. If you're facing any issue accessing your course, please contact support.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <a href={invite.invite_link} target="_blank" rel="noopener noreferrer" className="block flex-1">
-            <Button size="sm" className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-semibold">
-              <MessageCircle className="mr-2 h-4 w-4" /> Join Telegram Channel
-            </Button>
-          </a>
-          <Button 
-            size="sm" 
-            variant="outline"
-            className="shrink-0"
-            onClick={handleVerify}
-            disabled={verifying}
-          >
-            {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify Join"}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Only real courses without a channel fall back here (dummy courses are handled early)
   return (
-    <div className="mt-3 p-3 bg-muted/30 rounded-lg text-center">
-      <p className="text-[11px] text-muted-foreground">
-        Course access will be sent to you shortly. Contact support if you don't hear back within 24 hours.
+    <div className="mt-3 space-y-2.5 p-3.5 bg-primary/5 border border-primary/20 rounded-lg text-left">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          <MessageCircle className="h-4 w-4 text-primary" /> Telegram Bot Delivery
+        </span>
+        {isLinked ? (
+          <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+            Linked (ID: {telegramId})
+          </span>
+        ) : (
+          <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+            1-Click Connect
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Receive this course directly in your Telegram via our automated delivery bot with content protection and high-speed streaming.
       </p>
+      <Button
+        size="sm"
+        onClick={handleOpenBot}
+        disabled={connecting}
+        className="w-full bg-[#0088cc] hover:bg-[#0088cc]/90 text-white font-medium shadow-sm gap-2"
+      >
+        <MessageCircle className="h-4 w-4" />
+        {connecting ? "Opening Bot..." : "Access Course on Telegram Bot"}
+      </Button>
     </div>
   );
 }
