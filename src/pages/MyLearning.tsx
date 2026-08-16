@@ -401,6 +401,7 @@ const MyLearning = () => {
                       key={course.id}
                       course={course}
                       progress={getProgress(course.id)}
+                      showResume
                     />
                   ))}
                 </div>
@@ -424,6 +425,7 @@ const MyLearning = () => {
                       key={course.id}
                       course={course}
                       badge="Included in Premium"
+                      showResume
                     />
                   ))}
                 </div>
