@@ -1,22 +1,38 @@
-import {
-  supabase,
-  BOT3_TELEGRAM_TOKEN,
-  AUTO_DELETE_HOURS,
-  deleteTelegramMessage
-} from '../telegram/_utils';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+const BOT3_TELEGRAM_TOKEN = process.env.BOT3_TELEGRAM_TOKEN || '8846789448:AAF77fj8Tl5FVK1tTzDaLjk4DSOgpt0X5U4';
+const AUTO_DELETE_HOURS = parseInt(process.env.AUTO_DELETE_HOURS || '46', 10);
+
+async function deleteTelegramMessage(token: string, chatId: number | string, messageId: number | string) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: Number(messageId)
+      })
+    });
+    return await res.json();
+  } catch (err) {
+    console.error(`deleteTelegramMessage error (chat: ${chatId}, msg: ${messageId}):`, err);
+    return { ok: false, error: err };
+  }
+}
 
 export default async function handler(req: any, res: any) {
-  // Allow GET / POST (Vercel Cron makes GET requests)
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Optional: Verify CRON_SECRET if configured in environment
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
     const authHeader = req.headers.authorization;
     if (authHeader !== `Bearer ${cronSecret}` && req.headers['x-vercel-cron'] !== '1') {
-      console.warn('[cron:auto-delete] Unauthorized cron trigger attempt');
       return res.status(401).json({ error: 'Unauthorized' });
     }
   }
@@ -25,9 +41,6 @@ export default async function handler(req: any, res: any) {
     const hours = AUTO_DELETE_HOURS || 46;
     const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
-    console.log(`[cron:auto-delete] Starting auto-delete scan. Cutoff time (${hours}h ago): ${cutoffDate}`);
-
-    // Query messages to delete (limit 100 per run to stay well within serverless timeouts)
     const { data: messages, error: queryError } = await supabase
       .from('telegram_delivered_messages')
       .select('id, telegram_chat_id, telegram_message_id, course_id, sent_at')
@@ -37,13 +50,10 @@ export default async function handler(req: any, res: any) {
       .limit(100);
 
     if (queryError) {
-      console.error('[cron:auto-delete] DB query error:', queryError);
       return res.status(500).json({ error: 'Failed to query delivered messages' });
     }
 
     const messageList = messages || [];
-    console.log(`[cron:auto-delete] Found ${messageList.length} messages eligible for deletion`);
-
     let successCount = 0;
     let failedCount = 0;
 
@@ -55,7 +65,6 @@ export default async function handler(req: any, res: any) {
           msg.telegram_message_id
         );
 
-        // Check if deletion was successful OR if message was already removed/not found
         const isSuccess = tgRes && tgRes.ok;
         const description = (tgRes?.description || '').toLowerCase();
         const isAlreadyDeleted =
@@ -72,16 +81,12 @@ export default async function handler(req: any, res: any) {
 
           successCount++;
         } else {
-          console.error(`[cron:auto-delete] Telegram error deleting msg ${msg.telegram_message_id} in chat ${msg.telegram_chat_id}:`, tgRes);
           failedCount++;
         }
       } catch (itemErr) {
-        console.error(`[cron:auto-delete] Exception deleting message row ${msg.id}:`, itemErr);
         failedCount++;
       }
     }
-
-    console.log(`[cron:auto-delete] Completed run. Success/Processed: ${successCount}, Failed: ${failedCount}`);
 
     return res.status(200).json({
       success: true,
@@ -92,7 +97,6 @@ export default async function handler(req: any, res: any) {
     });
 
   } catch (error: any) {
-    console.error('[cron:auto-delete] Uncaught cron execution error:', error);
     return res.status(500).json({ error: error.message || 'Internal server error' });
   }
 }

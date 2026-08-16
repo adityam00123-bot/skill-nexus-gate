@@ -1,27 +1,119 @@
-import {
-  supabase,
-  BOT3_TELEGRAM_TOKEN,
-  STORAGE_CHANNEL_ID,
-  UNIFIED_ERROR_MESSAGE,
-  buildDeliveryClosingMessage,
-  verifyUserLiveAccess,
-  sendTelegramMessage,
-  copyTelegramMessage
-} from './_utils';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+const BOT3_TELEGRAM_TOKEN = process.env.BOT3_TELEGRAM_TOKEN || '8846789448:AAF77fj8Tl5FVK1tTzDaLjk4DSOgpt0X5U4';
+const BOT2_USERNAME = (process.env.BOT2_USERNAME || 'CourseVerseofficialbot').replace(/^@/, '').replace(/^t\.me\//, '');
+const STORAGE_CHANNEL_ID = process.env.STORAGE_CHANNEL_ID || '-1004345664449';
+const WEBSITE_COURSE_URL_BASE = process.env.WEBSITE_COURSE_URL_BASE || 'https://courseverse-beta.vercel.app/courses';
+const AUTO_DELETE_HOURS = parseInt(process.env.AUTO_DELETE_HOURS || '46', 10);
+const UNIFIED_ERROR_MESSAGE = `❌ You haven't purchased this course.\n\n🛒 Purchase now: ${WEBSITE_COURSE_URL_BASE}`;
+
+function buildDeliveryClosingMessage(courseTitle: string, lectureCount: number): string {
+  return `✅ ${courseTitle} delivered — ${lectureCount} lectures.\n\n` +
+    `⏳ For security, these files auto-remove from this chat in ${AUTO_DELETE_HOURS} hours. Forwarding, saving, and downloading are disabled the whole time, so just revisit them here whenever you want to watch.\n\n` +
+    `📚 Want it again after they're gone? Open @${BOT2_USERNAME} anytime and tap this course for a fresh copy.\n\n` +
+    `Happy learning! 🚀`;
+}
+
+async function sendTelegramMessage(token: string, chatId: number | string, text: string, options: any = {}) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: options.disable_web_page_preview ?? true,
+        ...options
+      })
+    });
+    return await res.json();
+  } catch (err) {
+    console.error(`sendTelegramMessage error (chatId: ${chatId}):`, err);
+    return { ok: false, error: err };
+  }
+}
+
+async function copyTelegramMessage(token: string, toChatId: number | string, fromChatId: number | string, messageId: number | string) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/copyMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: toChatId,
+        from_chat_id: fromChatId,
+        message_id: Number(messageId),
+        protect_content: true
+      })
+    });
+    return await res.json();
+  } catch (err) {
+    console.error(`copyTelegramMessage error:`, err);
+    return { ok: false, error: err };
+  }
+}
+
+async function verifyUserLiveAccess(userId: string, courseId: string): Promise<{ hasAccess: boolean; courseTitle?: string }> {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, is_blocked')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!profile || profile.is_blocked) return { hasAccess: false };
+
+    const { data: course } = await supabase
+      .from('courses')
+      .select('id, title, is_deleted')
+      .eq('id', courseId)
+      .maybeSingle();
+
+    if (!course || course.is_deleted) return { hasAccess: false };
+
+    const nowIso = new Date().toISOString();
+    const { data: activeSub } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .or(`end_date.is.null,end_date.gt.${nowIso}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (activeSub) return { hasAccess: true, courseTitle: course.title };
+
+    const { data: purchase } = await supabase
+      .from('purchases')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('course_id', courseId)
+      .or('is_deleted.is.null,is_deleted.eq.false')
+      .limit(1)
+      .maybeSingle();
+
+    if (purchase) return { hasAccess: true, courseTitle: course.title };
+
+    return { hasAccess: false };
+  } catch {
+    return { hasAccess: false };
+  }
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Telegram expects a fast 200 response
   try {
     let update = req.body;
     if (typeof update === 'string') {
       try {
         update = JSON.parse(update);
       } catch (e: any) {
-        console.error('[bot3-delivery] Failed to parse JSON body:', e.message);
         return res.status(200).json({ status: 'ok' });
       }
     }
@@ -30,36 +122,25 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ status: 'ok' });
     }
 
-    // =========================================================================
-    // PART 2: STORAGE-CHANNEL INGESTION (channel_post / edited_channel_post)
-    // =========================================================================
+    // 1. Channel Posts (Ingestion)
     if (update.channel_post || update.edited_channel_post) {
       const post = update.channel_post || update.edited_channel_post;
-      console.log(`[bot3-delivery] Processing channel post ${post.message_id} in channel ${post.chat?.id}`);
 
       try {
         const caption = (post.caption || post.text || '').trim();
         const headerMatch = caption.match(/^#(\d+)/);
 
         if (headerMatch) {
-          // A) Numbered course header post (e.g. "#1042 Full Stack Course")
           const courseNum = parseInt(headerMatch[1], 10);
-          console.log(`[bot3-delivery] Header matched with course_number: ${courseNum}`);
-
-          const { data: course, error: courseErr } = await supabase
+          const { data: course } = await supabase
             .from('courses')
             .select('id, title, course_number')
             .eq('course_number', courseNum)
             .eq('is_deleted', false)
             .maybeSingle();
 
-          if (courseErr) {
-            console.error(`[bot3-delivery] DB error finding course_number ${courseNum}:`, courseErr);
-          }
-
           if (course) {
-            console.log(`[bot3-delivery] Course found: ${course.id} (${course.title}). Updating ingestion state.`);
-            const { error: stateErr } = await supabase
+            await supabase
               .from('telegram_ingestion_state')
               .upsert({
                 id: 1,
@@ -67,12 +148,7 @@ export default async function handler(req: any, res: any) {
                 current_course_number: courseNum,
                 updated_at: new Date().toISOString()
               }, { onConflict: 'id' });
-
-            if (stateErr) {
-              console.error('[bot3-delivery] Error updating telegram_ingestion_state:', stateErr);
-            }
           } else {
-            console.warn(`[bot3-delivery] Course #${courseNum} not found in DB. Logging unmatched upload.`);
             await supabase.from('telegram_unmatched_uploads').insert({
               raw_caption: caption,
               telegram_message_id: post.message_id,
@@ -82,20 +158,14 @@ export default async function handler(req: any, res: any) {
             });
           }
         } else {
-          // B) Lecture file or course content (video, document, sticker, audio, animation, photo, etc.)
           const isContent = !!(post.video || post.document || post.audio || post.animation || post.video_note || post.photo || post.sticker || post.text);
 
           if (isContent) {
-            console.log(`[bot3-delivery] Course content received (type: ${post.sticker ? 'sticker' : post.video ? 'video' : 'media'}). Checking active ingestion state.`);
-            const { data: state, error: stateErr } = await supabase
+            const { data: state } = await supabase
               .from('telegram_ingestion_state')
-              .select('current_course_id, current_course_number')
+              .select('current_course_id')
               .eq('id', 1)
               .maybeSingle();
-
-            if (stateErr) {
-              console.error('[bot3-delivery] Error reading ingestion state:', stateErr);
-            }
 
             if (state && state.current_course_id) {
               const courseId = state.current_course_id;
@@ -103,9 +173,7 @@ export default async function handler(req: any, res: any) {
               const messageId = post.message_id.toString();
               const durationSeconds = post.video?.duration || post.audio?.duration || 0;
 
-              console.log(`[bot3-delivery] Linking message ${messageId} to course ${courseId}`);
-
-              const { error: logErr } = await supabase
+              await supabase
                 .from('course_video_log')
                 .upsert({
                   course_id: courseId,
@@ -115,30 +183,22 @@ export default async function handler(req: any, res: any) {
                   posted_at: new Date(post.date * 1000).toISOString()
                 }, { onConflict: 'channel_id, telegram_message_id' });
 
-              if (logErr) {
-                console.error('[bot3-delivery] Error inserting into course_video_log:', logErr);
-              } else {
-                // Recompute and update course statistics
-                const { data: allVideos } = await supabase
-                  .from('course_video_log')
-                  .select('duration_seconds')
-                  .eq('course_id', courseId);
+              const { data: allVideos } = await supabase
+                .from('course_video_log')
+                .select('duration_seconds')
+                .eq('course_id', courseId);
 
-                if (allVideos) {
-                  const total_lectures = allVideos.length;
-                  const totalDurationSecs = allVideos.reduce((sum, v) => sum + (v.duration_seconds || 0), 0);
-                  const duration_hours = Math.round((totalDurationSecs / 3600) * 10) / 10;
+              if (allVideos) {
+                const total_lectures = allVideos.length;
+                const totalDurationSecs = allVideos.reduce((sum, v) => sum + (v.duration_seconds || 0), 0);
+                const duration_hours = Math.round((totalDurationSecs / 3600) * 10) / 10;
 
-                  await supabase
-                    .from('courses')
-                    .update({ total_lectures, duration_hours })
-                    .eq('id', courseId);
-
-                  console.log(`[bot3-delivery] Updated course ${courseId} -> total_lectures: ${total_lectures}, duration_hours: ${duration_hours}`);
-                }
+                await supabase
+                  .from('courses')
+                  .update({ total_lectures, duration_hours })
+                  .eq('id', courseId);
               }
             } else {
-              console.warn('[bot3-delivery] No active course context in ingestion state. Logging unmatched upload.');
               await supabase.from('telegram_unmatched_uploads').insert({
                 raw_caption: caption || null,
                 telegram_message_id: post.message_id,
@@ -149,16 +209,14 @@ export default async function handler(req: any, res: any) {
             }
           }
         }
-      } catch (ingestErr: any) {
-        console.error('[bot3-delivery] Uncaught error during ingestion:', ingestErr);
+      } catch (ingestErr) {
+        console.error('[bot3-delivery] Ingest error:', ingestErr);
       }
 
       return res.status(200).json({ status: 'ok' });
     }
 
-    // =========================================================================
-    // PART 3: CONTENT DELIVERY (/start <token> in DM)
-    // =========================================================================
+    // 2. DM Message (/start <token>)
     if (update.message) {
       const msg = update.message;
       const text = (msg.text || '').trim();
@@ -168,85 +226,54 @@ export default async function handler(req: any, res: any) {
       if (text.startsWith('/start')) {
         const token = text.replace(/^\/start\s*/, '').trim();
 
-        // 1. Look up token in telegram_delivery_tokens
         if (!token) {
           await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
           return res.status(200).json({ status: 'ok' });
         }
 
-        const { data: tokenData, error: tokenErr } = await supabase
+        const { data: tokenData } = await supabase
           .from('telegram_delivery_tokens')
           .select('id, user_id, telegram_id, course_id, status, expires_at')
           .eq('id', token)
           .maybeSingle();
 
-        if (tokenErr || !tokenData) {
-          console.warn(`[bot3-delivery] Token not found: "${token}"`);
+        if (!tokenData) {
           await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
           return res.status(200).json({ status: 'ok' });
         }
 
-        // 2a. Status validation
         if (tokenData.status !== 'issued') {
-          console.warn(`[bot3-delivery] Token already processed. Status: ${tokenData.status}`);
-          if (tokenData.status === 'issued') {
-            await supabase
-              .from('telegram_delivery_tokens')
-              .update({ status: 'already_used' })
-              .eq('id', token);
-          }
           await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
           return res.status(200).json({ status: 'ok' });
         }
 
-        // 2b. Expiration validation
         const isExpired = new Date() > new Date(tokenData.expires_at);
         if (isExpired) {
-          console.warn(`[bot3-delivery] Token expired at ${tokenData.expires_at}`);
-          await supabase
-            .from('telegram_delivery_tokens')
-            .update({ status: 'expired' })
-            .eq('id', token);
+          await supabase.from('telegram_delivery_tokens').update({ status: 'expired' }).eq('id', token);
           await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
           return res.status(200).json({ status: 'ok' });
         }
 
-        // 2c. Sender Telegram ID mismatch validation
         if (BigInt(senderTgId) !== BigInt(tokenData.telegram_id)) {
-          console.warn(`[bot3-delivery] Sender mismatch. Expected ${tokenData.telegram_id}, got ${senderTgId}`);
-          await supabase
-            .from('telegram_delivery_tokens')
-            .update({ status: 'rejected_mismatch' })
-            .eq('id', token);
+          await supabase.from('telegram_delivery_tokens').update({ status: 'rejected_mismatch' }).eq('id', token);
           await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
           return res.status(200).json({ status: 'ok' });
         }
 
-        // 2d. Live re-check in Supabase for valid access
         const accessCheck = await verifyUserLiveAccess(tokenData.user_id, tokenData.course_id);
         if (!accessCheck.hasAccess) {
-          console.warn(`[bot3-delivery] Live access check failed for user ${tokenData.user_id}, course ${tokenData.course_id}: ${accessCheck.reason}`);
-          await supabase
-            .from('telegram_delivery_tokens')
-            .update({ status: 'rejected_no_purchase' })
-            .eq('id', token);
+          await supabase.from('telegram_delivery_tokens').update({ status: 'rejected_no_purchase' }).eq('id', token);
           await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
           return res.status(200).json({ status: 'ok' });
         }
 
-        // 3. ALL CHECKS PASSED: Fetch and deliver lecture videos
-        console.log(`[bot3-delivery] Delivering course ${tokenData.course_id} to chat ${chatId}`);
-
-        const { data: lectures, error: lecErr } = await supabase
+        // DELIVER CONTENT
+        const { data: lectures } = await supabase
           .from('course_video_log')
           .select('id, channel_id, telegram_message_id, posted_at')
           .eq('course_id', tokenData.course_id)
           .order('posted_at', { ascending: true })
           .order('telegram_message_id', { ascending: true });
-
-        if (lecErr) {
-          console.error('[bot3-delivery] Error fetching lectures:', lecErr);
-        }
 
         const lectureList = lectures || [];
         let deliveredCount = 0;
@@ -262,21 +289,15 @@ export default async function handler(req: any, res: any) {
 
           if (copyRes && copyRes.ok && copyRes.result) {
             deliveredCount++;
-            const deliveredMsgId = copyRes.result.message_id;
-
-            // Log delivered message for scheduled auto-delete
             await supabase.from('telegram_delivered_messages').insert({
               telegram_chat_id: chatId,
-              telegram_message_id: deliveredMsgId,
+              telegram_message_id: copyRes.result.message_id,
               course_id: tokenData.course_id,
               sent_at: new Date().toISOString()
             });
-          } else {
-            console.error(`[bot3-delivery] Failed to copy message ${lec.telegram_message_id}:`, copyRes);
           }
         }
 
-        // Mark token as delivered
         await supabase
           .from('telegram_delivery_tokens')
           .update({
@@ -285,19 +306,17 @@ export default async function handler(req: any, res: any) {
           })
           .eq('id', token);
 
-        // Send required closing message
         const closingMsg = buildDeliveryClosingMessage(
           accessCheck.courseTitle || 'Course',
           deliveredCount
         );
         await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, closingMsg);
 
-        console.log(`[bot3-delivery] Successfully delivered ${deliveredCount} lectures to chat ${chatId}`);
         return res.status(200).json({ status: 'ok' });
       }
     }
   } catch (error: any) {
-    console.error(`[bot3-delivery] Webhook handler error: ${error?.message || 'Unknown'}`, error?.stack);
+    console.error('[bot3-delivery] Error:', error);
   }
 
   return res.status(200).json({ status: 'ok' });

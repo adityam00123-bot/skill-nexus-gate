@@ -1,4 +1,10 @@
-import { supabase, BOT2_USERNAME } from './_utils';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+const BOT2_USERNAME = (process.env.BOT2_USERNAME || 'CourseVerseofficialbot').replace(/^@/, '').replace(/^t\.me\//, '');
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -6,7 +12,6 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // 1. Authenticate user from Authorization Header
     const authHeader = req.headers.authorization;
     if (!authHeader) {
       return res.status(401).json({ error: 'Missing authorization header' });
@@ -19,7 +24,6 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({ error: 'Invalid or expired authentication session' });
     }
 
-    // 2. Generate a 30-minute link token in telegram_link_tokens
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
     const { data: linkToken, error: insertError } = await supabase
@@ -33,7 +37,7 @@ export default async function handler(req: any, res: any) {
       .single();
 
     if (insertError || !linkToken) {
-      console.error('[generate-link-token] DB insert error:', insertError);
+      console.error('[generate-link-token] insert error:', insertError);
       return res.status(500).json({ error: 'Failed to generate link token' });
     }
 

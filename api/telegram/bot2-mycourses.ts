@@ -1,46 +1,140 @@
-import {
-  supabase,
-  BOT2_TELEGRAM_TOKEN,
-  BOT3_USERNAME,
-  WEBSITE_COURSE_URL_BASE,
-  WEBSITE_ACCOUNT_SETTINGS_URL,
-  UNIFIED_ERROR_MESSAGE,
-  verifyUserLiveAccess,
-  sendTelegramMessage,
-  editTelegramMessage,
-  answerCallbackQuery
-} from './_utils';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+const BOT2_TELEGRAM_TOKEN = process.env.BOT2_TELEGRAM_TOKEN || '8657608725:AAGsU5XcLc7ZI3jkUJhkk_YnSeGNA4K6df8';
+const BOT3_USERNAME = (process.env.BOT3_USERNAME || 'CourseVersedeliverybot').replace(/^@/, '').replace(/^t\.me\//, '');
+const WEBSITE_COURSE_URL_BASE = process.env.WEBSITE_COURSE_URL_BASE || 'https://courseverse-beta.vercel.app/courses';
+const WEBSITE_ACCOUNT_SETTINGS_URL = process.env.WEBSITE_ACCOUNT_SETTINGS_URL || 'https://courseverse-beta.vercel.app/settings';
+const UNIFIED_ERROR_MESSAGE = `❌ You haven't purchased this course.\n\n🛒 Purchase now: ${WEBSITE_COURSE_URL_BASE}`;
 
 const PAGE_SIZE = 5;
 
-/**
- * Resolves a Telegram sender against the CourseVerse `profiles` table.
- * Fallback order:
- *  1. profiles.telegram_id exact match
- *  2. profiles.telegram_username ILIKE sender's username (auto-saves telegram_id)
- *  3. historical telegram_access.joined_telegram_user_id (auto-saves telegram_id)
- */
+async function sendTelegramMessage(token: string, chatId: number | string, text: string, options: any = {}) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: options.disable_web_page_preview ?? true,
+        ...options
+      })
+    });
+    return await res.json();
+  } catch (err) {
+    console.error(`sendTelegramMessage error (chatId: ${chatId}):`, err);
+    return { ok: false, error: err };
+  }
+}
+
+async function editTelegramMessage(token: string, chatId: number | string, messageId: number, text: string, options: any = {}) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        disable_web_page_preview: options.disable_web_page_preview ?? true,
+        ...options
+      })
+    });
+    return await res.json();
+  } catch (err) {
+    console.error(`editTelegramMessage error (chatId: ${chatId}, messageId: ${messageId}):`, err);
+    return { ok: false, error: err };
+  }
+}
+
+async function answerCallbackQuery(token: string, callbackQueryId: string, text?: string, showAlert: boolean = false) {
+  try {
+    const payload: any = { callback_query_id: callbackQueryId };
+    if (text) {
+      payload.text = text;
+      payload.show_alert = showAlert;
+    }
+    const res = await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  } catch (err) {
+    console.error('answerCallbackQuery error:', err);
+    return { ok: false, error: err };
+  }
+}
+
+async function verifyUserLiveAccess(userId: string, courseId: string): Promise<{ hasAccess: boolean; courseTitle?: string }> {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, is_blocked')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!profile || profile.is_blocked) return { hasAccess: false };
+
+    const { data: course } = await supabase
+      .from('courses')
+      .select('id, title, is_deleted')
+      .eq('id', courseId)
+      .maybeSingle();
+
+    if (!course || course.is_deleted) return { hasAccess: false };
+
+    const nowIso = new Date().toISOString();
+    const { data: activeSub } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .or(`end_date.is.null,end_date.gt.${nowIso}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (activeSub) return { hasAccess: true, courseTitle: course.title };
+
+    const { data: purchase } = await supabase
+      .from('purchases')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('course_id', courseId)
+      .or('is_deleted.is.null,is_deleted.eq.false')
+      .limit(1)
+      .maybeSingle();
+
+    if (purchase) return { hasAccess: true, courseTitle: course.title };
+
+    return { hasAccess: false };
+  } catch {
+    return { hasAccess: false };
+  }
+}
+
 async function resolveUserProfile(tgUserId: number, tgUsername?: string) {
-  // 1. Check profiles.telegram_id
   const { data: byId } = await supabase
     .from('profiles')
-    .select('id, full_name, email, is_blocked, telegram_id, telegram_username')
+    .select('id, full_name, is_blocked, telegram_id, telegram_username')
     .eq('telegram_id', tgUserId)
     .maybeSingle();
 
   if (byId) return byId;
 
-  // 2. Check profiles.telegram_username if username is available
   if (tgUsername) {
     const cleanUsername = tgUsername.replace(/^@/, '').trim();
     const { data: byUsername } = await supabase
       .from('profiles')
-      .select('id, full_name, email, is_blocked, telegram_id, telegram_username')
+      .select('id, full_name, is_blocked, telegram_id, telegram_username')
       .ilike('telegram_username', cleanUsername)
       .maybeSingle();
 
     if (byUsername) {
-      console.log(`[bot2-mycourses] Matched user by username "${cleanUsername}". Linking telegram_id=${tgUserId}`);
       await supabase
         .from('profiles')
         .update({ telegram_id: tgUserId })
@@ -49,7 +143,6 @@ async function resolveUserProfile(tgUserId: number, tgUsername?: string) {
     }
   }
 
-  // 3. Check historical telegram_access
   const { data: accessRow } = await supabase
     .from('telegram_access')
     .select('user_id')
@@ -60,12 +153,11 @@ async function resolveUserProfile(tgUserId: number, tgUsername?: string) {
   if (accessRow && accessRow.user_id) {
     const { data: byAccess } = await supabase
       .from('profiles')
-      .select('id, full_name, email, is_blocked, telegram_id, telegram_username')
+      .select('id, full_name, is_blocked, telegram_id, telegram_username')
       .eq('id', accessRow.user_id)
       .maybeSingle();
 
     if (byAccess) {
-      console.log(`[bot2-mycourses] Matched user by historical telegram_access. Linking telegram_id=${tgUserId}`);
       await supabase
         .from('profiles')
         .update({ telegram_id: tgUserId })
@@ -77,9 +169,6 @@ async function resolveUserProfile(tgUserId: number, tgUsername?: string) {
   return null;
 }
 
-/**
- * Builds the Main Menu keyboard
- */
 function getMainMenuMarkup() {
   return {
     inline_keyboard: [
@@ -101,7 +190,6 @@ export default async function handler(req: any, res: any) {
       try {
         update = JSON.parse(update);
       } catch (e: any) {
-        console.error('[bot2-mycourses] Failed to parse JSON body:', e.message);
         return res.status(200).json({ status: 'ok' });
       }
     }
@@ -110,9 +198,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ status: 'ok' });
     }
 
-    // =========================================================================
-    // 1. HANDLE INCOMING MESSAGES (/start & /start link_<token>)
-    // =========================================================================
+    // 1. Messages (/start)
     if (update.message) {
       const msg = update.message;
       const text = (msg.text || '').trim();
@@ -123,14 +209,10 @@ export default async function handler(req: any, res: any) {
       if (text.startsWith('/start')) {
         const payload = text.replace(/^\/start\s*/, '').trim();
 
-        // ---------------------------------------------------------------------
-        // Variant B: /start link_<token> (Connecting account from website)
-        // ---------------------------------------------------------------------
+        // Variant B: /start link_<token>
         if (payload.startsWith('link_')) {
           const linkTokenId = payload.replace(/^link_/, '').trim();
-          console.log(`[bot2-mycourses] Processing account link token: ${linkTokenId}`);
-
-          const { data: linkToken, error: linkErr } = await supabase
+          const { data: linkToken } = await supabase
             .from('telegram_link_tokens')
             .select('id, user_id, status, expires_at')
             .eq('id', linkTokenId)
@@ -138,7 +220,7 @@ export default async function handler(req: any, res: any) {
 
           const isExpired = linkToken && new Date() > new Date(linkToken.expires_at);
 
-          if (linkErr || !linkToken || linkToken.status !== 'issued' || isExpired) {
+          if (!linkToken || linkToken.status !== 'issued' || isExpired) {
             await sendTelegramMessage(
               BOT2_TELEGRAM_TOKEN,
               chatId,
@@ -154,32 +236,13 @@ export default async function handler(req: any, res: any) {
             return res.status(200).json({ status: 'ok' });
           }
 
-          // Update profiles with this sender's Telegram ID
           const updatePayload: any = { telegram_id: senderTgId };
-          if (senderUsername) {
-            updatePayload.telegram_username = senderUsername;
-          }
+          if (senderUsername) updatePayload.telegram_username = senderUsername;
 
-          await supabase
-            .from('profiles')
-            .update(updatePayload)
-            .eq('id', linkToken.user_id);
+          await supabase.from('profiles').update(updatePayload).eq('id', linkToken.user_id);
+          await supabase.from('telegram_link_tokens').update({ status: 'consumed', consumed_at: new Date().toISOString() }).eq('id', linkTokenId);
 
-          // Mark token as consumed
-          await supabase
-            .from('telegram_link_tokens')
-            .update({
-              status: 'consumed',
-              consumed_at: new Date().toISOString()
-            })
-            .eq('id', linkTokenId);
-
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', linkToken.user_id)
-            .maybeSingle();
-
+          const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', linkToken.user_id).maybeSingle();
           const userName = profile?.full_name || 'Student';
 
           await sendTelegramMessage(
@@ -194,9 +257,7 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
-        // ---------------------------------------------------------------------
-        // Variant A: /start (Regular open / dashboard)
-        // ---------------------------------------------------------------------
+        // Variant A: /start (Regular open)
         const profile = await resolveUserProfile(senderTgId, senderUsername);
 
         if (!profile) {
@@ -238,9 +299,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // =========================================================================
-    // 2. HANDLE CALLBACK QUERIES (Inline buttons)
-    // =========================================================================
+    // 2. Callback Queries
     if (update.callback_query) {
       const cb = update.callback_query;
       const callbackData = cb.data || '';
@@ -249,31 +308,14 @@ export default async function handler(req: any, res: any) {
       const senderTgId = cb.from?.id;
       const senderUsername = cb.from?.username;
 
-      // Resolve user profile
       const profile = await resolveUserProfile(senderTgId, senderUsername);
       if (!profile || profile.is_blocked) {
         await answerCallbackQuery(BOT2_TELEGRAM_TOKEN, cb.id, 'Account not linked or suspended');
-        await editTelegramMessage(
-          BOT2_TELEGRAM_TOKEN,
-          chatId,
-          messageId,
-          `Your Telegram isn't connected yet. Connect it from your account settings:\n\n${WEBSITE_ACCOUNT_SETTINGS_URL}`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🔗 Connect Telegram', url: WEBSITE_ACCOUNT_SETTINGS_URL }]
-              ]
-            }
-          }
-        );
         return res.status(200).json({ status: 'ok' });
       }
 
       await answerCallbackQuery(BOT2_TELEGRAM_TOKEN, cb.id);
 
-      // -----------------------------------------------------------------------
-      // A) Main Menu
-      // -----------------------------------------------------------------------
       if (callbackData === 'menu_main') {
         const userName = profile.full_name || 'Student';
         await editTelegramMessage(
@@ -289,13 +331,9 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ status: 'ok' });
       }
 
-      // -----------------------------------------------------------------------
-      // B) My Courses (Paginated)
-      // -----------------------------------------------------------------------
       if (callbackData.startsWith('menu_courses:')) {
         const page = parseInt(callbackData.split(':')[1] || '0', 10);
 
-        // Fetch purchased courses
         const { data: purchaseRows } = await supabase
           .from('purchases')
           .select('course_id')
@@ -304,7 +342,6 @@ export default async function handler(req: any, res: any) {
 
         const purchasedIds = new Set((purchaseRows || []).map((r: any) => r.course_id));
 
-        // Check active subscription
         const nowIso = new Date().toISOString();
         const { data: activeSub } = await supabase
           .from('subscriptions')
@@ -324,13 +361,10 @@ export default async function handler(req: any, res: any) {
             .eq('is_published', true);
 
           (allPublished || []).forEach((c: any) => {
-            if (!purchasedIds.has(c.id)) {
-              accessibleCourseIds.push(c.id);
-            }
+            if (!purchasedIds.has(c.id)) accessibleCourseIds.push(c.id);
           });
         }
 
-        // Validate UUIDs
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const validIds = accessibleCourseIds.filter((id) => uuidRegex.test(id));
 
@@ -352,7 +386,6 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
-        // Fetch course details
         const { data: courses } = await supabase
           .from('courses')
           .select('id, title, course_number')
@@ -366,31 +399,19 @@ export default async function handler(req: any, res: any) {
         const pageCourses = courseList.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
         const keyboardRows: any[] = [];
-
-        // Course buttons
         pageCourses.forEach((c: any) => {
           const numPrefix = c.course_number ? `#${c.course_number} ` : '';
           const truncatedTitle = c.title.length > 32 ? `${c.title.slice(0, 30)}...` : c.title;
           keyboardRows.push([
-            {
-              text: `📖 ${numPrefix}${truncatedTitle}`,
-              callback_data: `select_course:${c.id}`
-            }
+            { text: `📖 ${numPrefix}${truncatedTitle}`, callback_data: `select_course:${c.id}` }
           ]);
         });
 
-        // Pagination row
         const navRow: any[] = [];
-        if (currentPage > 0) {
-          navRow.push({ text: '⬅️ Prev', callback_data: `menu_courses:${currentPage - 1}` });
-        }
+        if (currentPage > 0) navRow.push({ text: '⬅️ Prev', callback_data: `menu_courses:${currentPage - 1}` });
         navRow.push({ text: `📄 ${currentPage + 1}/${totalPages}`, callback_data: `menu_courses:${currentPage}` });
-        if (currentPage < totalPages - 1) {
-          navRow.push({ text: 'Next ➡️', callback_data: `menu_courses:${currentPage + 1}` });
-        }
+        if (currentPage < totalPages - 1) navRow.push({ text: 'Next ➡️', callback_data: `menu_courses:${currentPage + 1}` });
         keyboardRows.push(navRow);
-
-        // Bottom row
         keyboardRows.push([{ text: '🏠 Main Menu', callback_data: 'menu_main' }]);
 
         await editTelegramMessage(
@@ -406,13 +427,8 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ status: 'ok' });
       }
 
-      // -----------------------------------------------------------------------
-      // C) Select Course (Token generation & Bot 3 deep link)
-      // -----------------------------------------------------------------------
       if (callbackData.startsWith('select_course:')) {
         const courseId = callbackData.replace(/^select_course:/, '').trim();
-
-        // 1. Live re-verify access to course_id
         const accessCheck = await verifyUserLiveAccess(profile.id, courseId);
 
         if (!accessCheck.hasAccess) {
@@ -433,7 +449,6 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
-        // 2. Generate 10-minute delivery token in telegram_delivery_tokens
         const { data: tokenRow, error: tokenErr } = await supabase
           .from('telegram_delivery_tokens')
           .insert({
@@ -447,7 +462,6 @@ export default async function handler(req: any, res: any) {
           .single();
 
         if (tokenErr || !tokenRow) {
-          console.error('[bot2-mycourses] Failed to create delivery token:', tokenErr);
           await answerCallbackQuery(BOT2_TELEGRAM_TOKEN, cb.id, 'Failed to create access token. Try again.', true);
           return res.status(200).json({ status: 'ok' });
         }
@@ -473,32 +487,19 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ status: 'ok' });
       }
 
-      // -----------------------------------------------------------------------
-      // D) My Subscription
-      // -----------------------------------------------------------------------
       if (callbackData === 'menu_subscription') {
         const nowIso = new Date().toISOString();
         const { data: activeSub } = await supabase
           .from('subscriptions')
-          .select('plan_name, start_date, end_date, status')
+          .select('plan_name, end_date')
           .eq('user_id', profile.id)
           .eq('status', 'active')
           .or(`end_date.is.null,end_date.gt.${nowIso}`)
-          .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (activeSub) {
-          let expiryText = 'Lifetime Access';
-          if (activeSub.end_date) {
-            const d = new Date(activeSub.end_date);
-            expiryText = d.toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric'
-            });
-          }
-
+          const expiryText = activeSub.end_date ? new Date(activeSub.end_date).toLocaleDateString() : 'Lifetime';
           await editTelegramMessage(
             BOT2_TELEGRAM_TOKEN,
             chatId,
@@ -535,7 +536,7 @@ export default async function handler(req: any, res: any) {
       }
     }
   } catch (error: any) {
-    console.error(`[bot2-mycourses] Handler error: ${error?.message || 'Unknown'}`, error?.stack);
+    console.error('[bot2-mycourses] error:', error);
   }
 
   return res.status(200).json({ status: 'ok' });
