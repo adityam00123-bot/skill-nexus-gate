@@ -37,7 +37,34 @@ async function sendTelegramMessage(token: string, chatId: number | string, text:
   }
 }
 
-async function copyTelegramMessage(token: string, toChatId: number | string, fromChatId: number | string, messageId: number | string) {
+// BLAZING FAST BATCH COPY (Telegram Bot API 7.0+)
+async function copyTelegramMessagesBatch(token: string, toChatId: number | string, fromChatId: number | string, messageIds: number[]) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/copyMessages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: toChatId,
+        from_chat_id: fromChatId,
+        message_ids: messageIds,
+        protect_content: true
+      })
+    });
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.result)) {
+      return data.result.map((item: any) => item.message_id);
+    }
+    // Fallback if copyMessages isn't supported or returned non-array
+    console.warn('copyMessages batch fallback:', data);
+    return [];
+  } catch (err) {
+    console.error('copyTelegramMessagesBatch error:', err);
+    return [];
+  }
+}
+
+// Fallback single copy if needed
+async function copyTelegramMessageSingle(token: string, toChatId: number | string, fromChatId: number | string, messageId: number | string) {
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/copyMessage`, {
       method: 'POST',
@@ -192,6 +219,25 @@ export default async function handler(req: any, res: any) {
                 current_course_number: courseNum,
                 updated_at: new Date().toISOString()
               }, { onConflict: 'id' });
+
+            // If the header post ALSO contains a Photo or Video, save it as the #1 thumbnail/intro item!
+            const hasMedia = !!(post.photo || post.video || post.document);
+            if (hasMedia) {
+              const channelId = post.chat?.id ? post.chat.id.toString() : STORAGE_CHANNEL_ID;
+              const messageId = post.message_id.toString();
+              const { fileType, duration } = detectFileType(post);
+
+              await supabase
+                .from('course_video_log')
+                .upsert({
+                  course_id: course.id,
+                  channel_id: channelId,
+                  telegram_message_id: messageId,
+                  duration_seconds: duration,
+                  file_type: post.photo ? 'photo' : fileType,
+                  posted_at: new Date(post.date * 1000).toISOString()
+                }, { onConflict: 'channel_id, telegram_message_id' });
+            }
           } else {
             await supabase.from('telegram_unmatched_uploads').insert({
               raw_caption: caption,
@@ -240,7 +286,6 @@ export default async function handler(req: any, res: any) {
                 const videoItems = allItems.filter(i => i.file_type === 'video' || i.file_type === 'audio');
                 const materialItems = allItems.filter(i => i.file_type === 'pdf' || i.file_type === 'archive' || i.file_type === 'material');
 
-                // If course has only archives/files (no stream videos), total_lectures counts the resource packs
                 const total_lectures = videoItems.length > 0 ? videoItems.length : (allItems.filter(i => i.file_type !== 'sticker').length || 1);
                 const total_materials = videoItems.length > 0 ? materialItems.length : 0;
 
@@ -280,8 +325,21 @@ export default async function handler(req: any, res: any) {
       if (text.startsWith('/start')) {
         const token = text.replace(/^\/start\s*/, '').trim();
 
+        // If user typed raw /start without token
         if (!token) {
-          await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
+          await sendTelegramMessage(
+            BOT3_TELEGRAM_TOKEN,
+            chatId,
+            `👋 **Welcome to CourseVerse Delivery Bot!**\n\n📚 To view and receive your purchased courses, please open @${BOT2_USERNAME} and tap on any course.`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '📚 Open My Courses', url: `https://t.me/${BOT2_USERNAME}` }]
+                ]
+              }
+            }
+          );
           return res.status(200).json({ status: 'ok' });
         }
 
@@ -296,6 +354,23 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
+        if (tokenData.status === 'delivered') {
+          await sendTelegramMessage(
+            BOT3_TELEGRAM_TOKEN,
+            chatId,
+            `✅ **This course batch was already delivered!**\n\n📚 Need a fresh copy? Open @${BOT2_USERNAME} anytime and tap the course again.`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '📚 Open My Courses', url: `https://t.me/${BOT2_USERNAME}` }]
+                ]
+              }
+            }
+          );
+          return res.status(200).json({ status: 'ok' });
+        }
+
         if (tokenData.status !== 'issued') {
           await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
           return res.status(200).json({ status: 'ok' });
@@ -304,7 +379,18 @@ export default async function handler(req: any, res: any) {
         const isExpired = new Date() > new Date(tokenData.expires_at);
         if (isExpired) {
           await supabase.from('telegram_delivery_tokens').update({ status: 'expired' }).eq('id', token);
-          await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
+          await sendTelegramMessage(
+            BOT3_TELEGRAM_TOKEN,
+            chatId,
+            `⏳ This delivery link has expired.\n\n📚 Please open @${BOT2_USERNAME} to generate a fresh delivery.`,
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '📚 Open My Courses', url: `https://t.me/${BOT2_USERNAME}` }]
+                ]
+              }
+            }
+          );
           return res.status(200).json({ status: 'ok' });
         }
 
@@ -321,35 +407,81 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
-        // DELIVER CONTENT
-        const { data: lectures } = await supabase
+        // DELIVER CONTENT WITH ACCURATE SEQUENCE SORTING
+        const { data: rawLectures } = await supabase
           .from('course_video_log')
-          .select('id, channel_id, telegram_message_id, posted_at')
-          .eq('course_id', tokenData.course_id)
-          .order('posted_at', { ascending: true })
-          .order('telegram_message_id', { ascending: true });
+          .select('id, channel_id, telegram_message_id, posted_at, file_type')
+          .eq('course_id', tokenData.course_id);
 
-        const lectureList = lectures || [];
+        // Guaranteed numerical & chronological ordering (Photo/Thumbnail first, then ascending message IDs)
+        const lectureList = (rawLectures || []).sort((a: any, b: any) => {
+          if (a.file_type === 'photo' && b.file_type !== 'photo') return -1;
+          if (b.file_type === 'photo' && a.file_type !== 'photo') return 1;
+
+          const idA = Number(a.telegram_message_id) || 0;
+          const idB = Number(b.telegram_message_id) || 0;
+          return idA - idB;
+        });
+
+        if (lectureList.length === 0) {
+          await sendTelegramMessage(
+            BOT3_TELEGRAM_TOKEN,
+            chatId,
+            `⚠️ No materials uploaded yet for this course. Please contact support if you need assistance.`
+          );
+          return res.status(200).json({ status: 'ok' });
+        }
+
+        // Group by channel_id
+        const fromChannel = lectureList[0].channel_id || STORAGE_CHANNEL_ID;
+        const msgIds = lectureList.map((l: any) => Number(l.telegram_message_id));
+
+        // ⚡ BLAZING FAST: Send in batches of up to 100 via copyMessages
+        const deliveredRows: any[] = [];
+        const batchSize = 100;
         let deliveredCount = 0;
 
-        for (const lec of lectureList) {
-          const fromChannel = lec.channel_id || STORAGE_CHANNEL_ID;
-          const copyRes = await copyTelegramMessage(
+        for (let i = 0; i < msgIds.length; i += batchSize) {
+          const chunk = msgIds.slice(i, i + batchSize);
+          const sentIds = await copyTelegramMessagesBatch(
             BOT3_TELEGRAM_TOKEN,
             chatId,
             fromChannel,
-            lec.telegram_message_id
+            chunk
           );
 
-          if (copyRes && copyRes.ok && copyRes.result) {
-            deliveredCount++;
-            await supabase.from('telegram_delivered_messages').insert({
-              telegram_chat_id: chatId,
-              telegram_message_id: copyRes.result.message_id,
-              course_id: tokenData.course_id,
-              sent_at: new Date().toISOString()
+          if (sentIds && sentIds.length > 0) {
+            deliveredCount += sentIds.length;
+            sentIds.forEach((sId: number) => {
+              deliveredRows.push({
+                telegram_chat_id: chatId,
+                telegram_message_id: sId,
+                course_id: tokenData.course_id,
+                sent_at: new Date().toISOString()
+              });
+            });
+          } else {
+            // Fallback to fast parallel copy if batch failed
+            const results = await Promise.all(chunk.map((mId: number) => 
+              copyTelegramMessageSingle(BOT3_TELEGRAM_TOKEN, chatId, fromChannel, mId)
+            ));
+            results.forEach((r: any) => {
+              if (r && r.ok && r.result) {
+                deliveredCount++;
+                deliveredRows.push({
+                  telegram_chat_id: chatId,
+                  telegram_message_id: r.result.message_id,
+                  course_id: tokenData.course_id,
+                  sent_at: new Date().toISOString()
+                });
+              }
             });
           }
+        }
+
+        // 1 single bulk insert into database (instant!)
+        if (deliveredRows.length > 0) {
+          await supabase.from('telegram_delivered_messages').insert(deliveredRows);
         }
 
         await supabase

@@ -58,59 +58,33 @@ async function answerCallbackQuery(token: string, callbackQueryId: string, text?
       payload.text = text;
       payload.show_alert = showAlert;
     }
-    const res = await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    });
-    return await res.json();
+    }).catch(() => {});
   } catch (err) {
-    console.error('answerCallbackQuery error:', err);
-    return { ok: false, error: err };
+    // Non-blocking
   }
 }
 
 async function verifyUserLiveAccess(userId: string, courseId: string): Promise<{ hasAccess: boolean; courseTitle?: string }> {
   try {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id, is_blocked')
-      .eq('id', userId)
-      .maybeSingle();
+    const [profileRes, courseRes] = await Promise.all([
+      supabase.from('profiles').select('id, is_blocked').eq('id', userId).maybeSingle(),
+      supabase.from('courses').select('id, title, is_deleted').eq('id', courseId).maybeSingle()
+    ]);
 
-    if (!profile || profile.is_blocked) return { hasAccess: false };
-
-    const { data: course } = await supabase
-      .from('courses')
-      .select('id, title, is_deleted')
-      .eq('id', courseId)
-      .maybeSingle();
-
-    if (!course || course.is_deleted) return { hasAccess: false };
+    if (!profileRes.data || profileRes.data.is_blocked) return { hasAccess: false };
+    if (!courseRes.data || courseRes.data.is_deleted) return { hasAccess: false };
 
     const nowIso = new Date().toISOString();
-    const { data: activeSub } = await supabase
-      .from('subscriptions')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .or(`end_date.is.null,end_date.gt.${nowIso}`)
-      .limit(1)
-      .maybeSingle();
+    const [subRes, purchaseRes] = await Promise.all([
+      supabase.from('subscriptions').select('id').eq('user_id', userId).eq('status', 'active').or(`end_date.is.null,end_date.gt.${nowIso}`).limit(1).maybeSingle(),
+      supabase.from('purchases').select('id').eq('user_id', userId).eq('course_id', courseId).or('is_deleted.is.null,is_deleted.eq.false').limit(1).maybeSingle()
+    ]);
 
-    if (activeSub) return { hasAccess: true, courseTitle: course.title };
-
-    const { data: purchase } = await supabase
-      .from('purchases')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('course_id', courseId)
-      .or('is_deleted.is.null,is_deleted.eq.false')
-      .limit(1)
-      .maybeSingle();
-
-    if (purchase) return { hasAccess: true, courseTitle: course.title };
-
+    if (subRes.data || purchaseRes.data) return { hasAccess: true, courseTitle: courseRes.data.title };
     return { hasAccess: false };
   } catch {
     return { hasAccess: false };
@@ -243,8 +217,10 @@ export default async function handler(req: any, res: any) {
           const updatePayload: any = { telegram_id: senderTgId };
           if (senderUsername) updatePayload.telegram_username = senderUsername;
 
-          await supabase.from('profiles').update(updatePayload).eq('id', linkToken.user_id);
-          await supabase.from('telegram_link_tokens').update({ status: 'consumed', consumed_at: new Date().toISOString() }).eq('id', linkTokenId);
+          await Promise.all([
+            supabase.from('profiles').update(updatePayload).eq('id', linkToken.user_id),
+            supabase.from('telegram_link_tokens').update({ status: 'consumed', consumed_at: new Date().toISOString() }).eq('id', linkTokenId)
+          ]);
 
           const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', linkToken.user_id).maybeSingle();
           const userName = profile?.full_name || 'Student';
@@ -312,13 +288,18 @@ export default async function handler(req: any, res: any) {
       const senderTgId = cb.from?.id;
       const senderUsername = cb.from?.username;
 
+      // ⚡ INSTANT SPINNER REMOVAL (Zero button lag)
+      answerCallbackQuery(BOT2_TELEGRAM_TOKEN, cb.id);
+
       const profile = await resolveUserProfile(senderTgId, senderUsername);
       if (!profile || profile.is_blocked) {
-        await answerCallbackQuery(BOT2_TELEGRAM_TOKEN, cb.id, 'Account not linked or suspended');
+        await sendTelegramMessage(
+          BOT2_TELEGRAM_TOKEN,
+          chatId,
+          `Your Telegram isn't connected yet. Connect it from your account settings:\n\n${WEBSITE_ACCOUNT_SETTINGS_URL}`
+        );
         return res.status(200).json({ status: 'ok' });
       }
-
-      await answerCallbackQuery(BOT2_TELEGRAM_TOKEN, cb.id);
 
       if (callbackData === 'menu_main') {
         const userName = profile.full_name || 'Student';
@@ -338,27 +319,17 @@ export default async function handler(req: any, res: any) {
       if (callbackData.startsWith('menu_courses:')) {
         const page = parseInt(callbackData.split(':')[1] || '0', 10);
 
-        // 1. Get all courses purchased by user
-        const { data: purchaseRows } = await supabase
-          .from('purchases')
-          .select('course_id')
-          .eq('user_id', profile.id)
-          .or('is_deleted.is.null,is_deleted.eq.false');
-
-        const purchasedIds = new Set((purchaseRows || []).map((r: any) => r.course_id));
-
         const nowIso = new Date().toISOString();
-        const { data: activeSub } = await supabase
-          .from('subscriptions')
-          .select('id')
-          .eq('user_id', profile.id)
-          .eq('status', 'active')
-          .or(`end_date.is.null,end_date.gt.${nowIso}`)
-          .maybeSingle();
+        const [purchaseRes, subRes, accessRes] = await Promise.all([
+          supabase.from('purchases').select('course_id').eq('user_id', profile.id).or('is_deleted.is.null,is_deleted.eq.false'),
+          supabase.from('subscriptions').select('id').eq('user_id', profile.id).eq('status', 'active').or(`end_date.is.null,end_date.gt.${nowIso}`).limit(1).maybeSingle(),
+          supabase.from('telegram_access').select('course_id, joined_telegram_user_id').eq('user_id', profile.id)
+        ]);
 
+        const purchasedIds = new Set((purchaseRes.data || []).map((r: any) => r.course_id));
         let allUserCourses = Array.from(purchasedIds);
 
-        if (activeSub) {
+        if (subRes.data) {
           const { data: allPublished } = await supabase
             .from('courses')
             .select('id')
@@ -370,23 +341,16 @@ export default async function handler(req: any, res: any) {
           });
         }
 
-        // 2. Fetch telegram_access rows for this user to check per-course binding
-        const { data: accessRows } = await supabase
-          .from('telegram_access')
-          .select('course_id, joined_telegram_user_id')
-          .eq('user_id', profile.id);
-
         const accessMap = new Map<string, number | null>();
-        (accessRows || []).forEach((ar: any) => {
+        (accessRes.data || []).forEach((ar: any) => {
           accessMap.set(ar.course_id, ar.joined_telegram_user_id ? Number(ar.joined_telegram_user_id) : null);
         });
 
-        // 3. Filter courses: Include course IF (linked to senderTgId) OR (not linked to any other TG ID yet)
         const senderNumId = Number(senderTgId);
         const accessibleCourseIds = allUserCourses.filter((courseId) => {
           const boundTgId = accessMap.get(courseId);
-          if (!boundTgId) return true; // Unbound -> accessible by user's primary/active telegram
-          return boundTgId === senderNumId; // Bound specifically to this telegram account
+          if (!boundTgId) return true;
+          return boundTgId === senderNumId;
         });
 
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -473,35 +437,30 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
-        // Ensure binding in telegram_access
-        await supabase
-          .from('telegram_access')
-          .upsert({
+        // Parallel update binding + issue token
+        const [_, tokenRes] = await Promise.all([
+          supabase.from('telegram_access').upsert({
             user_id: profile.id,
             course_id: courseId,
             joined_telegram_user_id: senderTgId,
             joined_telegram_username: senderUsername || null,
             updated_at: new Date().toISOString()
-          }, { onConflict: 'user_id, course_id' });
-
-        const { data: tokenRow, error: tokenErr } = await supabase
-          .from('telegram_delivery_tokens')
-          .insert({
+          }, { onConflict: 'user_id, course_id' }),
+          supabase.from('telegram_delivery_tokens').insert({
             user_id: profile.id,
             telegram_id: senderTgId,
             course_id: courseId,
             status: 'issued',
             expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString()
-          })
-          .select('id')
-          .single();
+          }).select('id').single()
+        ]);
 
-        if (tokenErr || !tokenRow) {
-          await answerCallbackQuery(BOT2_TELEGRAM_TOKEN, cb.id, 'Failed to create access token. Try again.', true);
+        if (tokenRes.error || !tokenRes.data) {
+          await sendTelegramMessage(BOT2_TELEGRAM_TOKEN, chatId, 'Failed to create access token. Please try again.');
           return res.status(200).json({ status: 'ok' });
         }
 
-        const deliveryUrl = `https://t.me/${BOT3_USERNAME}?start=${tokenRow.id}`;
+        const deliveryUrl = `https://t.me/${BOT3_USERNAME}?start=${tokenRes.data.id}`;
         const courseName = accessCheck.courseTitle || 'Course';
 
         await editTelegramMessage(
