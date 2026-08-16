@@ -18,6 +18,79 @@ function buildDeliveryClosingMessage(courseTitle: string, lectureCount: number):
     `Happy learning! 🚀`;
 }
 
+function extractCourseTitleFromCaption(caption: string, courseNum: number): string {
+  if (!caption) return `Course #${courseNum}`;
+
+  const lines = caption
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0);
+
+  for (const line of lines) {
+    // Ignore divider lines, contact handles, or links
+    if (/^[\➗\-\=\_\*\#\~\.\:\s]+$/.test(line)) continue;
+    if (/^(dm|contact|explore|check|http|t\.me|\@)/i.test(line)) continue;
+
+    // Strip leading #1, #1510, etc.
+    let clean = line.replace(/^#\s*\d+\s*[-:.]*\s*/i, '').trim();
+
+    // Strip leading emojis, stars, numbering like ⭐️1., 1., ⭐️, etc.
+    clean = clean.replace(/^[⭐️★✨🔹🔸▫️▪️\d\.\-\:\)\(\s]+/u, '').trim();
+
+    // Strip trailing separators
+    clean = clean.replace(/[\➗\-\=\_]+$/g, '').trim();
+
+    if (clean.length >= 3) {
+      return clean;
+    }
+  }
+
+  return `Course #${courseNum}`;
+}
+
+async function getTelegramPhotoUrl(token: string, photoArray: any[], courseNum: number): Promise<string | null> {
+  try {
+    if (!photoArray || photoArray.length === 0) return null;
+
+    // Pick highest resolution photo
+    const photoObj = photoArray[photoArray.length - 1];
+    if (!photoObj || !photoObj.file_id) return null;
+
+    const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${photoObj.file_id}`);
+    const fileData = await fileRes.json();
+
+    if (!fileData.ok || !fileData.result?.file_path) return null;
+
+    const filePath = fileData.result.file_path;
+    const directTgUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+
+    // Download the photo image buffer
+    const imgRes = await fetch(directTgUrl);
+    if (!imgRes.ok) return null;
+
+    const imgBuffer = await imgRes.arrayBuffer();
+    const fileName = `course_${courseNum}_${Date.now()}.jpg`;
+
+    // Upload to Supabase Storage bucket 'course-thumbnails'
+    const { data: uploadData, error: uploadErr } = await supabase.storage
+      .from('course-thumbnails')
+      .upload(fileName, imgBuffer, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
+
+    if (!uploadErr && uploadData) {
+      const { data: urlData } = supabase.storage.from('course-thumbnails').getPublicUrl(fileName);
+      if (urlData?.publicUrl) return urlData.publicUrl;
+    }
+
+    return null;
+  } catch (err) {
+    console.error('[bot3-delivery] getTelegramPhotoUrl error:', err);
+    return null;
+  }
+}
+
 async function sendTelegramMessage(token: string, chatId: number | string, text: string, options: any = {}) {
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -54,7 +127,6 @@ async function copyTelegramMessagesBatch(token: string, toChatId: number | strin
     if (data.ok && Array.isArray(data.result)) {
       return data.result.map((item: any) => item.message_id);
     }
-    // Fallback if copyMessages isn't supported or returned non-array
     console.warn('copyMessages batch fallback:', data);
     return [];
   } catch (err) {
@@ -63,7 +135,6 @@ async function copyTelegramMessagesBatch(token: string, toChatId: number | strin
   }
 }
 
-// Fallback single copy if needed
 async function copyTelegramMessageSingle(token: string, toChatId: number | string, fromChatId: number | string, messageId: number | string) {
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/copyMessage`, {
@@ -193,7 +264,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ status: 'ok' });
     }
 
-    // 1. Channel Posts (Ingestion)
+    // 1. Channel Posts (Ingestion & Auto-Course / Thumbnail Sync)
     if (update.channel_post || update.edited_channel_post) {
       const post = update.channel_post || update.edited_channel_post;
 
@@ -203,12 +274,61 @@ export default async function handler(req: any, res: any) {
 
         if (headerMatch) {
           const courseNum = parseInt(headerMatch[1], 10);
-          const { data: course } = await supabase
+          const cleanTitle = extractCourseTitleFromCaption(caption, courseNum);
+
+          let { data: course } = await supabase
             .from('courses')
-            .select('id, title, course_number')
+            .select('id, title, course_number, thumbnail_url')
             .eq('course_number', courseNum)
             .eq('is_deleted', false)
             .maybeSingle();
+
+          // ⚡ Extract photo & upload to Supabase Storage
+          let uploadedThumbnailUrl: string | null = null;
+          if (post.photo) {
+            uploadedThumbnailUrl = await getTelegramPhotoUrl(BOT3_TELEGRAM_TOKEN, post.photo, courseNum);
+          }
+
+          if (!course) {
+            // ✨ AUTO-CREATE NEW COURSE SPACE ON WEBSITE (e.g. #1510)
+            const { data: createdCourse, error: createErr } = await supabase
+              .from('courses')
+              .insert({
+                course_number: courseNum,
+                title: cleanTitle || `Course #${courseNum}`,
+                thumbnail_url: uploadedThumbnailUrl || null,
+                price: 499,
+                original_price: 1999,
+                is_published: true,
+                is_deleted: false,
+                total_lectures: 0,
+                total_materials: 0,
+                duration_hours: 0,
+                level: 'All Levels',
+                language: 'Hindi / English',
+                created_at: new Date().toISOString()
+              })
+              .select('id, title, course_number, thumbnail_url')
+              .single();
+
+            if (createdCourse) {
+              course = createdCourse;
+              console.log(`[bot3-delivery] ✨ Auto-created new course #${courseNum}: "${cleanTitle}" with thumbnail: ${uploadedThumbnailUrl}`);
+            } else {
+              console.error(`[bot3-delivery] Error auto-creating course #${courseNum}:`, createErr);
+            }
+          } else {
+            // 🔄 EXISTING COURSE: Update thumbnail & title if available
+            const updateFields: any = {};
+            if (uploadedThumbnailUrl) updateFields.thumbnail_url = uploadedThumbnailUrl;
+            if (cleanTitle && (!course.title || course.title.startsWith('Course #'))) {
+              updateFields.title = cleanTitle;
+            }
+            if (Object.keys(updateFields).length > 0) {
+              await supabase.from('courses').update(updateFields).eq('id', course.id);
+              console.log(`[bot3-delivery] 🔄 Updated course #${courseNum} thumbnail & title.`);
+            }
+          }
 
           if (course) {
             // Re-upload support: Clean old video logs for this course to ensure fresh overwrite
@@ -226,7 +346,7 @@ export default async function handler(req: any, res: any) {
                 updated_at: new Date().toISOString()
               }, { onConflict: 'id' });
 
-            // If the header post ALSO contains a Photo or Video, save it as the #1 thumbnail/intro item!
+            // If the header post ALSO contains a Photo or Video, save it as the #1 thumbnail/intro item for bot delivery!
             const hasMedia = !!(post.photo || post.video || post.document);
             if (hasMedia) {
               const channelId = post.chat?.id ? post.chat.id.toString() : STORAGE_CHANNEL_ID;
@@ -248,7 +368,7 @@ export default async function handler(req: any, res: any) {
             await supabase.from('telegram_unmatched_uploads').insert({
               raw_caption: caption,
               telegram_message_id: post.message_id,
-              reason: 'course_number_not_in_db',
+              reason: 'failed_to_resolve_or_create_course',
               created_at: new Date().toISOString(),
               resolved: false
             });
@@ -485,7 +605,7 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        // 1 single bulk insert into database (instant!)
+        // 1 single bulk insert into database
         if (deliveredRows.length > 0) {
           await supabase.from('telegram_delivered_messages').insert(deliveredRows);
         }
