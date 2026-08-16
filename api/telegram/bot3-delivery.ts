@@ -11,6 +11,8 @@ const WEBSITE_COURSE_URL_BASE = process.env.WEBSITE_COURSE_URL_BASE || 'https://
 const AUTO_DELETE_HOURS = parseInt(process.env.AUTO_DELETE_HOURS || '46', 10);
 const UNIFIED_ERROR_MESSAGE = `❌ You haven't purchased this course.\n\n🛒 Purchase now: ${WEBSITE_COURSE_URL_BASE}`;
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function buildDeliveryClosingMessage(courseTitle: string, lectureCount: number): string {
   return `✅ ${courseTitle} delivered — ${lectureCount} items.\n\n` +
     `⏳ For security, these files auto-remove from this chat in ${AUTO_DELETE_HOURS} hours. Forwarding, saving, and downloading are disabled the whole time, so just revisit them here whenever you want to watch.\n\n` +
@@ -27,17 +29,11 @@ function extractCourseTitleFromCaption(caption: string, courseNum: number): stri
     .filter(l => l.length > 0);
 
   for (const line of lines) {
-    // Ignore divider lines, contact handles, or links
     if (/^[\➗\-\=\_\*\#\~\.\:\s]+$/.test(line)) continue;
     if (/^(dm|contact|explore|check|http|t\.me|\@)/i.test(line)) continue;
 
-    // Strip leading #1, #1510, etc.
     let clean = line.replace(/^#\s*\d+\s*[-:.]*\s*/i, '').trim();
-
-    // Strip leading emojis, stars, numbering like ⭐️1., 1., ⭐️, etc.
     clean = clean.replace(/^[⭐️★✨🔹🔸▫️▪️\d\.\-\:\)\(\s]+/u, '').trim();
-
-    // Strip trailing separators
     clean = clean.replace(/[\➗\-\=\_]+$/g, '').trim();
 
     if (clean.length >= 3) {
@@ -52,7 +48,6 @@ async function getTelegramPhotoUrl(token: string, photoArray: any[], courseNum: 
   try {
     if (!photoArray || photoArray.length === 0) return null;
 
-    // Pick highest resolution photo
     const photoObj = photoArray[photoArray.length - 1];
     if (!photoObj || !photoObj.file_id) return null;
 
@@ -64,14 +59,12 @@ async function getTelegramPhotoUrl(token: string, photoArray: any[], courseNum: 
     const filePath = fileData.result.file_path;
     const directTgUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
 
-    // Download the photo image buffer
     const imgRes = await fetch(directTgUrl);
     if (!imgRes.ok) return null;
 
     const imgBuffer = await imgRes.arrayBuffer();
     const fileName = `course_${courseNum}_${Date.now()}.jpg`;
 
-    // Upload to Supabase Storage bucket 'course-thumbnails'
     const { data: uploadData, error: uploadErr } = await supabase.storage
       .from('course-thumbnails')
       .upload(fileName, imgBuffer, {
@@ -110,7 +103,6 @@ async function sendTelegramMessage(token: string, chatId: number | string, text:
   }
 }
 
-// BLAZING FAST BATCH COPY (Telegram Bot API 7.0+)
 async function copyTelegramMessagesBatch(token: string, toChatId: number | string, fromChatId: number | string, messageIds: number[]) {
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/copyMessages`, {
@@ -283,14 +275,13 @@ export default async function handler(req: any, res: any) {
             .eq('is_deleted', false)
             .maybeSingle();
 
-          // ⚡ Extract photo & upload to Supabase Storage
           let uploadedThumbnailUrl: string | null = null;
           if (post.photo) {
             uploadedThumbnailUrl = await getTelegramPhotoUrl(BOT3_TELEGRAM_TOKEN, post.photo, courseNum);
           }
 
           if (!course) {
-            // ✨ AUTO-CREATE NEW COURSE SPACE ON WEBSITE (e.g. #1510)
+            // Auto-create course if it does not exist yet
             const { data: createdCourse, error: createErr } = await supabase
               .from('courses')
               .insert({
@@ -313,12 +304,12 @@ export default async function handler(req: any, res: any) {
 
             if (createdCourse) {
               course = createdCourse;
-              console.log(`[bot3-delivery] ✨ Auto-created new course #${courseNum}: "${cleanTitle}" with thumbnail: ${uploadedThumbnailUrl}`);
+              console.log(`[bot3-delivery] Auto-created course #${courseNum}: "${cleanTitle}"`);
             } else {
-              console.error(`[bot3-delivery] Error auto-creating course #${courseNum}:`, createErr);
+              console.error(`[bot3-delivery] Error creating course #${courseNum}:`, createErr);
             }
           } else {
-            // 🔄 EXISTING COURSE: Update thumbnail & title if available
+            // Update existing course thumbnail & title
             const updateFields: any = {};
             if (uploadedThumbnailUrl) updateFields.thumbnail_url = uploadedThumbnailUrl;
             if (cleanTitle && (!course.title || course.title.startsWith('Course #'))) {
@@ -326,17 +317,10 @@ export default async function handler(req: any, res: any) {
             }
             if (Object.keys(updateFields).length > 0) {
               await supabase.from('courses').update(updateFields).eq('id', course.id);
-              console.log(`[bot3-delivery] 🔄 Updated course #${courseNum} thumbnail & title.`);
             }
           }
 
           if (course) {
-            // Re-upload support: Clean old video logs for this course to ensure fresh overwrite
-            await supabase
-              .from('course_video_log')
-              .delete()
-              .eq('course_id', course.id);
-
             await supabase
               .from('telegram_ingestion_state')
               .upsert({
@@ -346,7 +330,6 @@ export default async function handler(req: any, res: any) {
                 updated_at: new Date().toISOString()
               }, { onConflict: 'id' });
 
-            // If the header post ALSO contains a Photo or Video, save it as the #1 thumbnail/intro item for bot delivery!
             const hasMedia = !!(post.photo || post.video || post.document);
             if (hasMedia) {
               const channelId = post.chat?.id ? post.chat.id.toString() : STORAGE_CHANNEL_ID;
@@ -364,14 +347,6 @@ export default async function handler(req: any, res: any) {
                   posted_at: new Date(post.date * 1000).toISOString()
                 }, { onConflict: 'channel_id, telegram_message_id' });
             }
-          } else {
-            await supabase.from('telegram_unmatched_uploads').insert({
-              raw_caption: caption,
-              telegram_message_id: post.message_id,
-              reason: 'failed_to_resolve_or_create_course',
-              created_at: new Date().toISOString(),
-              resolved: false
-            });
           }
         } else {
           const isContent = !!(
@@ -423,14 +398,6 @@ export default async function handler(req: any, res: any) {
                   .update({ total_lectures, total_materials, duration_hours })
                   .eq('id', courseId);
               }
-            } else {
-              await supabase.from('telegram_unmatched_uploads').insert({
-                raw_caption: caption || null,
-                telegram_message_id: post.message_id,
-                reason: 'no_active_course_context',
-                created_at: new Date().toISOString(),
-                resolved: false
-              });
             }
           }
         }
@@ -451,8 +418,8 @@ export default async function handler(req: any, res: any) {
       if (text.startsWith('/start')) {
         const token = text.replace(/^\/start\s*/, '').trim();
 
-        // If user typed raw /start without token
-        if (!token) {
+        // If user typed raw /start or invalid token
+        if (!token || !UUID_REGEX.test(token)) {
           await sendTelegramMessage(
             BOT3_TELEGRAM_TOKEN,
             chatId,
@@ -520,7 +487,7 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
-        if (BigInt(senderTgId) !== BigInt(tokenData.telegram_id)) {
+        if (senderTgId && tokenData.telegram_id && String(senderTgId) !== String(tokenData.telegram_id)) {
           await supabase.from('telegram_delivery_tokens').update({ status: 'rejected_mismatch' }).eq('id', token);
           await sendTelegramMessage(BOT3_TELEGRAM_TOKEN, chatId, UNIFIED_ERROR_MESSAGE);
           return res.status(200).json({ status: 'ok' });
@@ -539,11 +506,7 @@ export default async function handler(req: any, res: any) {
           .select('id, channel_id, telegram_message_id, posted_at, file_type')
           .eq('course_id', tokenData.course_id);
 
-        // Guaranteed numerical & chronological ordering (Photo/Thumbnail first, then ascending message IDs)
         const lectureList = (rawLectures || []).sort((a: any, b: any) => {
-          if (a.file_type === 'photo' && b.file_type !== 'photo') return -1;
-          if (b.file_type === 'photo' && a.file_type !== 'photo') return 1;
-
           const idA = Number(a.telegram_message_id) || 0;
           const idB = Number(b.telegram_message_id) || 0;
           return idA - idB;
@@ -558,11 +521,9 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
-        // Group by channel_id
         const fromChannel = lectureList[0].channel_id || STORAGE_CHANNEL_ID;
         const msgIds = lectureList.map((l: any) => Number(l.telegram_message_id));
 
-        // ⚡ BLAZING FAST: Send in batches of up to 100 via copyMessages
         const deliveredRows: any[] = [];
         const batchSize = 100;
         let deliveredCount = 0;
@@ -587,7 +548,6 @@ export default async function handler(req: any, res: any) {
               });
             });
           } else {
-            // Fallback to fast parallel copy if batch failed
             const results = await Promise.all(chunk.map((mId: number) => 
               copyTelegramMessageSingle(BOT3_TELEGRAM_TOKEN, chatId, fromChannel, mId)
             ));
@@ -605,7 +565,6 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        // 1 single bulk insert into database
         if (deliveredRows.length > 0) {
           await supabase.from('telegram_delivered_messages').insert(deliveredRows);
         }
@@ -628,7 +587,7 @@ export default async function handler(req: any, res: any) {
       }
     }
   } catch (error: any) {
-    console.error('[bot3-delivery] Error:', error);
+    console.error('[bot3-delivery] Fatal Error:', error);
   }
 
   return res.status(200).json({ status: 'ok' });
