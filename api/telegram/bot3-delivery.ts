@@ -29,12 +29,12 @@ function extractCourseTitleFromCaption(caption: string, courseNum: number): stri
     .filter(l => l.length > 0);
 
   for (const line of lines) {
-    if (/^[\➗\-\=\_\*\#\~\.\:\s]+$/.test(line)) continue;
-    if (/^(dm|contact|explore|check|http|t\.me|\@)/i.test(line)) continue;
+    if (/^[➗\-=_\*#~\.:\s]+$/.test(line)) continue;
+    if (/^(dm|contact|explore|check|http|t\.me|@)/i.test(line)) continue;
 
     let clean = line.replace(/^#\s*\d+\s*[-:.]*\s*/i, '').trim();
-    clean = clean.replace(/^[⭐️★✨🔹🔸▫️▪️\d\.\-\:\)\(\s]+/u, '').trim();
-    clean = clean.replace(/[\➗\-\=\_]+$/g, '').trim();
+    clean = clean.replace(/^[⭐️★✨🔹🔸▫️▪️\d.\-:) (\s]+/u, '').trim();
+    clean = clean.replace(/[➗\-=_\s]+$/g, '').trim();
 
     if (clean.length >= 3) {
       return clean;
