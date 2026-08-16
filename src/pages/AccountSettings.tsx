@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import {
   Camera, User, Lock, Eye, EyeOff, Shield, CreditCard,
-  Crown, Bell, Send, ChevronRight,
+  Crown, Bell, Send, ChevronRight, CheckCircle2, ExternalLink, Bot
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -45,9 +45,11 @@ const AccountSettings = () => {
   // Profile state
   const [fullName, setFullName] = useState("");
   const [telegramUsername, setTelegramUsername] = useState("");
+  const [telegramId, setTelegramId] = useState<number | null>(null);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [connectingTelegram, setConnectingTelegram] = useState(false);
 
   // Security state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -79,6 +81,7 @@ const AccountSettings = () => {
       setFullName(p.full_name || "");
       setAvatarUrl(p.avatar_url || "");
       setTelegramUsername(p.telegram_username || "");
+      setTelegramId(p.telegram_id || null);
       setUpiId(p.upi_id || "");
       setPaytmNumber(p.paytm_number || "");
       setBankAccount(p.bank_account || "");
@@ -132,6 +135,43 @@ const AccountSettings = () => {
     if (error) toast({ title: "Save failed", description: error.message, variant: "destructive" });
     else toast({ title: "Profile updated" });
     setSaving(false);
+  };
+
+  const handleConnectTelegram = async () => {
+    if (!user) return;
+    setConnectingTelegram(true);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch("/api/telegram/generate-link-token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token || ""}`
+        }
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        window.open(data.url, "_blank");
+        toast({
+          title: "Telegram Connection Initiated",
+          description: "Click 'Start' in the bot to complete linking your account."
+        });
+      } else {
+        toast({
+          title: "Connection Failed",
+          description: data.error || "Could not generate Telegram connection link",
+          variant: "destructive"
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Connection Error",
+        description: err.message || "Failed to initiate Telegram connection",
+        variant: "destructive"
+      });
+    } finally {
+      setConnectingTelegram(false);
+    }
   };
 
   // === Security Handlers ===
@@ -231,6 +271,84 @@ const AccountSettings = () => {
                 <Button onClick={handleSaveProfile} disabled={saving}>
                   {saving ? "Saving..." : "Save Changes"}
                 </Button>
+              </CardContent>
+            </Card>
+
+            {/* Telegram Delivery Bot Connection */}
+            <Card className="border-border overflow-hidden">
+              <CardHeader className="pb-3 border-b border-border/50 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bot className="h-5 w-5 text-primary" />
+                    <CardTitle className="text-base font-semibold">Telegram Bot Delivery</CardTitle>
+                  </div>
+                  {telegramId ? (
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Connected
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20">
+                      Not Connected
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                {telegramId ? (
+                  <div className="space-y-4">
+                    <div className="rounded-lg bg-muted/40 p-4 border border-border/60 text-sm space-y-1.5">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Telegram User ID:</span>
+                        <span className="font-mono font-medium text-foreground">{telegramId}</span>
+                      </div>
+                      {telegramUsername && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Telegram Username:</span>
+                          <span className="font-medium text-primary">@{telegramUsername.replace(/^@/, '')}</span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Your account is connected to our delivery system. Open the bot anytime to receive your course materials.
+                    </p>
+                    <div className="flex flex-wrap gap-2.5 pt-1">
+                      <Button
+                        type="button"
+                        className="gap-2"
+                        onClick={() => window.open("https://t.me/CourseVerseofficialbot", "_blank")}
+                      >
+                        <Send className="h-4 w-4" />
+                        Open My Courses Bot
+                        <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleConnectTelegram}
+                        disabled={connectingTelegram}
+                      >
+                        {connectingTelegram ? "Generating link..." : "Reconnect / Change Telegram"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Connect your Telegram account to access your purchased courses directly via our official Telegram bot (<strong className="text-foreground">@CourseVerseofficialbot</strong>) with single-use secure passes.
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={handleConnectTelegram}
+                      disabled={connectingTelegram}
+                      className="gap-2 shadow-sm"
+                    >
+                      <Send className="h-4 w-4" />
+                      {connectingTelegram ? "Generating link..." : "Connect Telegram Account"}
+                      <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
