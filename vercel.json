@@ -1,10 +1,4 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/telegram-auto-delete",
-      "schedule": "0 0 * * *"
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/:match*",
