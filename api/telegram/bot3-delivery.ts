@@ -82,11 +82,11 @@ export default async function handler(req: any, res: any) {
             });
           }
         } else {
-          // B) Lecture file without header (video, document, audio, animation, etc.)
-          const isMedia = !!(post.video || post.document || post.audio || post.animation || post.video_note || post.photo);
+          // B) Lecture file or course content (video, document, sticker, audio, animation, photo, etc.)
+          const isContent = !!(post.video || post.document || post.audio || post.animation || post.video_note || post.photo || post.sticker || post.text);
 
-          if (isMedia) {
-            console.log(`[bot3-delivery] Media lecture received. Checking active ingestion state.`);
+          if (isContent) {
+            console.log(`[bot3-delivery] Course content received (type: ${post.sticker ? 'sticker' : post.video ? 'video' : 'media'}). Checking active ingestion state.`);
             const { data: state, error: stateErr } = await supabase
               .from('telegram_ingestion_state')
               .select('current_course_id, current_course_number')
