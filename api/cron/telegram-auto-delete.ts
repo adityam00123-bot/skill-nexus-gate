@@ -3,7 +3,7 @@ import {
   BOT3_TELEGRAM_TOKEN,
   AUTO_DELETE_HOURS,
   deleteTelegramMessage
-} from '../telegram/utils';
+} from '../telegram/_utils';
 
 export default async function handler(req: any, res: any) {
   // Allow GET / POST (Vercel Cron makes GET requests)

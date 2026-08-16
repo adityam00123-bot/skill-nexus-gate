@@ -1,4 +1,4 @@
-import { supabase, BOT2_USERNAME } from './utils';
+import { supabase, BOT2_USERNAME } from './_utils';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

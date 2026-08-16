@@ -7,7 +7,7 @@ import {
   verifyUserLiveAccess,
   sendTelegramMessage,
   copyTelegramMessage
-} from './utils';
+} from './_utils';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

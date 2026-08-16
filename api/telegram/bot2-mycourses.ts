@@ -9,7 +9,7 @@ import {
   sendTelegramMessage,
   editTelegramMessage,
   answerCallbackQuery
-} from './utils';
+} from './_utils';
 
 const PAGE_SIZE = 5;
 
