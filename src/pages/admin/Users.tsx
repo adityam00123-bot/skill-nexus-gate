@@ -23,6 +23,8 @@ interface UserRow {
   avatar_url: string | null;
   created_at: string; 
   telegram_username?: string | null;
+  telegram_id?: number | null;
+  telegram_name?: string | null;
   upi_id?: string | null;
   paytm_number?: string | null;
   is_blocked?: boolean;
@@ -76,7 +78,7 @@ export default function AdminUsers() {
       // Step 1: Fetch Profiles
       const { data: profilesRes, error: pErr } = await supabase
         .from("profiles")
-        .select("id, full_name, email, avatar_url, created_at, is_blocked, telegram_username, upi_id, paytm_number, wallet_balance")
+        .select("id, full_name, email, avatar_url, created_at, is_blocked, telegram_username, telegram_id, upi_id, paytm_number, wallet_balance")
         .order("created_at", { ascending: false });
         
       if (pErr) throw pErr;
@@ -184,6 +186,8 @@ export default function AdminUsers() {
           avatar_url: p.avatar_url,
           created_at: p.created_at,
           telegram_username: p.telegram_username,
+          telegram_id: p.telegram_id ? Number(p.telegram_id) : null,
+          telegram_name: p.full_name || null,
           upi_id: p.upi_id,
           paytm_number: p.paytm_number,
           is_blocked: p.is_blocked || false,
@@ -195,7 +199,7 @@ export default function AdminUsers() {
           total_spent: totalSpent,
           distinct_telegram_ids: userDistinctTgIds.get(p.id)?.size || 0,
           telegram_access_map: userTelegramAccessMap.get(p.id) || new Map(),
-          latest_telegram_user_id: userLatestTgId.get(p.id) || null,
+          latest_telegram_user_id: userLatestTgId.get(p.id) || (p.telegram_id ? Number(p.telegram_id) : null),
         };
       });
 
@@ -595,11 +599,17 @@ export default function AdminUsers() {
                     </CardContent></Card>
                     <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
                       <p className="text-xs text-muted-foreground uppercase">Telegram Username</p>
-                      <p className="text-sm font-medium text-blue-400">{viewUser.telegram_username ? `@${viewUser.telegram_username}` : "Not Set"}</p>
+                      <p className="text-sm font-medium text-blue-400">{viewUser.telegram_username ? `@${viewUser.telegram_username.replace(/^@/, '')}` : "Not Set"}</p>
                     </CardContent></Card>
                     <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
-                      <p className="text-xs text-muted-foreground uppercase">Telegram User ID</p>
-                      <p className="font-mono text-sm font-medium text-blue-300">{viewUser.latest_telegram_user_id || "Not Set"}</p>
+                      <p className="text-xs text-muted-foreground uppercase">Telegram User ID (Permanent)</p>
+                      <p className="font-mono text-sm font-medium text-blue-300">
+                        {viewUser.telegram_id ? String(viewUser.telegram_id) : (viewUser.latest_telegram_user_id ? String(viewUser.latest_telegram_user_id) : "Not Set")}
+                      </p>
+                    </CardContent></Card>
+                    <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase">Telegram Name</p>
+                      <p className="text-sm font-medium">{viewUser.telegram_name || viewUser.full_name || "Not Set"}</p>
                     </CardContent></Card>
                     <Card className="bg-[#0F172A] border-[#334155]"><CardContent className="p-4 space-y-1">
                       <p className="text-xs text-muted-foreground uppercase">UPI ID</p>
@@ -649,6 +659,9 @@ export default function AdminUsers() {
                             <TableBody>
                               {viewUser.purchases.map(p => {
                                 const tgAccess = p.course_id ? viewUser.telegram_access_map.get(p.course_id) : null;
+                                const tgUsername = tgAccess?.tg_username || viewUser.telegram_username;
+                                const tgUserId = tgAccess?.tg_user_id || viewUser.telegram_id || viewUser.latest_telegram_user_id;
+
                                 return (
                                   <TableRow key={p.id} className="border-[#334155]">
                                     <TableCell className="font-medium max-w-[200px] truncate">
@@ -658,8 +671,12 @@ export default function AdminUsers() {
                                       </span>
                                     </TableCell>
                                     <TableCell className="text-green-400">₹{p.price_paid}</TableCell>
-                                    <TableCell className="text-xs text-blue-300">{p.is_subscription ? '—' : (tgAccess?.tg_username ? `@${tgAccess.tg_username}` : 'null')}</TableCell>
-                                    <TableCell className="font-mono text-xs text-muted-foreground">{p.is_subscription ? '—' : (tgAccess?.tg_user_id || '—')}</TableCell>
+                                    <TableCell className="text-xs text-blue-300">
+                                      {p.is_subscription ? '—' : (tgUsername ? `@${tgUsername.replace(/^@/, '')}` : '—')}
+                                    </TableCell>
+                                    <TableCell className="font-mono text-xs text-muted-foreground">
+                                      {p.is_subscription ? '—' : (tgUserId ? String(tgUserId) : '—')}
+                                    </TableCell>
                                     <TableCell className="text-sm">{new Date(p.created_at).toLocaleDateString()}</TableCell>
                                   </TableRow>
                                 );

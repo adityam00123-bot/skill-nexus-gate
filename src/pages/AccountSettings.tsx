@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -96,37 +96,74 @@ const AccountSettings = () => {
     if (!user) return;
     setLoadingCourseAccess(true);
     try {
-      const { data: purchases } = await supabase
-        .from('purchases')
-        .select('course_id, created_at, courses(id, title, thumbnail_url, course_number)')
-        .eq('user_id', user.id)
-        .or('is_deleted.is.null,is_deleted.eq.false');
-
-      const { data: tgAccess } = await supabase
-        .from('telegram_access')
-        .select('course_id, joined_telegram_user_id, joined_telegram_username')
-        .eq('user_id', user.id);
+      const nowIso = new Date().toISOString();
+      const [purchasesRes, tgAccessRes, subRes] = await Promise.all([
+        supabase
+          .from('purchases')
+          .select('course_id, created_at, courses(id, title, thumbnail_url, course_number)')
+          .eq('user_id', user.id)
+          .or('is_deleted.is.null,is_deleted.eq.false'),
+        supabase
+          .from('telegram_access')
+          .select('course_id, joined_telegram_user_id, joined_telegram_username')
+          .eq('user_id', user.id),
+        supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .or(`end_date.is.null,end_date.gt.${nowIso}`)
+          .maybeSingle()
+      ]);
 
       const tgMap = new Map<string, { id: number | null; username: string | null }>();
-      (tgAccess || []).forEach((ta: any) => {
+      (tgAccessRes.data || []).forEach((ta: any) => {
         tgMap.set(ta.course_id, {
           id: ta.joined_telegram_user_id ? Number(ta.joined_telegram_user_id) : null,
           username: ta.joined_telegram_username || null
         });
       });
 
-      const list = (purchases || []).map((p: any) => {
+      const purchasedCourseIds = new Set<string>();
+      const list: any[] = [];
+
+      (purchasesRes.data || []).forEach((p: any) => {
         const c = p.courses || {};
+        purchasedCourseIds.add(p.course_id);
         const access = tgMap.get(p.course_id);
-        return {
+        list.push({
           course_id: p.course_id,
           title: c.title || 'Untitled Course',
           thumbnail: c.thumbnail_url || '/placeholder.svg',
           course_number: c.course_number,
           joined_telegram_user_id: access?.id || null,
           joined_telegram_username: access?.username || null
-        };
+        });
       });
+
+      // If user has active subscription, include all other published courses
+      if (subRes.data) {
+        const { data: allCourses } = await supabase
+          .from('courses')
+          .select('id, title, thumbnail_url, course_number')
+          .eq('is_deleted', false)
+          .eq('is_published', true)
+          .order('course_number', { ascending: true });
+
+        (allCourses || []).forEach((c: any) => {
+          if (!purchasedCourseIds.has(c.id)) {
+            const access = tgMap.get(c.id);
+            list.push({
+              course_id: c.id,
+              title: c.title || 'Untitled Course',
+              thumbnail: c.thumbnail_url || '/placeholder.svg',
+              course_number: c.course_number,
+              joined_telegram_user_id: access?.id || null,
+              joined_telegram_username: access?.username || null
+            });
+          }
+        });
+      }
 
       setCourseAccessList(list);
     } catch (e) {
@@ -323,30 +360,59 @@ const AccountSettings = () => {
                   <Input value={user?.email || ""} disabled className="opacity-60" />
                   <p className="text-xs text-muted-foreground">Email cannot be changed here.</p>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Telegram Username</Label>
-                  <div className="relative">
-                    <Send className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      value={telegramUsername}
-                      onChange={(e) => setTelegramUsername(e.target.value)}
-                      placeholder="@username"
-                      className="pl-10"
-                      maxLength={50}
-                      disabled={!!telegramId}
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Telegram Username</Label>
+                    <div className="relative">
+                      <Send className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        value={telegramUsername ? `@${telegramUsername.replace(/^@/, '')}` : ""}
+                        onChange={(e) => setTelegramUsername(e.target.value.replace(/^@/, ''))}
+                        placeholder="@username"
+                        className="pl-10"
+                        maxLength={50}
+                        disabled={!!telegramId}
+                      />
+                    </div>
+                    {telegramId ? (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Verified and locked to your account
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Automatically synced when you connect Bot</p>
+                    )}
                   </div>
-                  {telegramId ? (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Verified and locked to your account
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Used for matching your Telegram identity</p>
+
+                  <div className="space-y-1.5">
+                    <Label>Telegram User ID (Permanent ID)</Label>
+                    <div className="relative">
+                      <Input
+                        value={telegramId ? String(telegramId) : "Not Connected Yet"}
+                        disabled
+                        className="opacity-90 font-mono bg-muted/30"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Unique numeric ID that never changes</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <Button onClick={handleSaveProfile} disabled={saving}>
+                    {saving ? "Saving..." : "Save Changes"}
+                  </Button>
+                  {!telegramId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2 border-primary/40 text-primary hover:bg-primary/10"
+                      onClick={() => handleConnectTelegram()}
+                      disabled={connectingTelegram}
+                    >
+                      <Send className="h-4 w-4" />
+                      {connectingTelegram ? "Connecting..." : "Connect Telegram Bot"}
+                    </Button>
                   )}
                 </div>
-                <Button onClick={handleSaveProfile} disabled={saving}>
-                  {saving ? "Saving..." : "Save Changes"}
-                </Button>
               </CardContent>
             </Card>
 
@@ -361,7 +427,7 @@ const AccountSettings = () => {
                   {telegramId ? (
                     <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 flex items-center gap-1">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      Connected & Verified
+                      Connected (ID: {telegramId})
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20">
@@ -388,7 +454,7 @@ const AccountSettings = () => {
                 </div>
 
                 {/* Per-Course Telegram Access List */}
-                {courseAccessList.length > 0 && (
+                {courseAccessList.length > 0 ? (
                   <div className="space-y-3 pt-1">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Course Telegram Bindings ({courseAccessList.length})
@@ -440,6 +506,10 @@ const AccountSettings = () => {
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-lg bg-muted/20 border border-border/70 text-center text-xs text-muted-foreground">
+                    No enrolled courses found yet. When you enroll in a course, its Telegram access pass will appear here.
                   </div>
                 )}
 

@@ -199,7 +199,7 @@ export default async function handler(req: any, res: any) {
 
       try {
         const caption = (post.caption || post.text || '').trim();
-        const headerMatch = caption.match(/^#(\d+)/);
+        const headerMatch = caption.match(/#\s*(\d+)/);
 
         if (headerMatch) {
           const courseNum = parseInt(headerMatch[1], 10);
@@ -211,6 +211,12 @@ export default async function handler(req: any, res: any) {
             .maybeSingle();
 
           if (course) {
+            // Re-upload support: Clean old video logs for this course to ensure fresh overwrite
+            await supabase
+              .from('course_video_log')
+              .delete()
+              .eq('course_id', course.id);
+
             await supabase
               .from('telegram_ingestion_state')
               .upsert({
