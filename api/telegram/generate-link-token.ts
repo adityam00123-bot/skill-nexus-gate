@@ -24,15 +24,28 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({ error: 'Invalid or expired authentication session' });
     }
 
+    let courseId = null;
+    if (req.body && req.body.course_id) {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(req.body.course_id)) {
+        courseId = req.body.course_id;
+      }
+    }
+
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+    const insertPayload: any = {
+      user_id: user.id,
+      status: 'issued',
+      expires_at: expiresAt
+    };
+    if (courseId) {
+      insertPayload.course_id = courseId;
+    }
 
     const { data: linkToken, error: insertError } = await supabase
       .from('telegram_link_tokens')
-      .insert({
-        user_id: user.id,
-        status: 'issued',
-        expires_at: expiresAt
-      })
+      .insert(insertPayload)
       .select('id')
       .single();
 
@@ -46,6 +59,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       success: true,
       token_id: linkToken.id,
+      course_id: courseId,
       expires_at: expiresAt,
       url: botUrl
     });

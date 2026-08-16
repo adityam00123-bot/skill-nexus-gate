@@ -65,6 +65,8 @@ const AccountSettings = () => {
   const [bankAccount, setBankAccount] = useState("");
   const [bankIfsc, setBankIfsc] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
+  const [courseAccessList, setCourseAccessList] = useState<any[]>([]);
+  const [loadingCourseAccess, setLoadingCourseAccess] = useState(false);
 
   // Notification prefs
   const [notifCourseUpdates, setNotifCourseUpdates] = useState(true);
@@ -90,6 +92,56 @@ const AccountSettings = () => {
     }
   }, [profile]);
 
+  const fetchCourseAccess = async () => {
+    if (!user) return;
+    setLoadingCourseAccess(true);
+    try {
+      const { data: purchases } = await supabase
+        .from('purchases')
+        .select('course_id, created_at, courses(id, title, thumbnail_url, course_number)')
+        .eq('user_id', user.id)
+        .or('is_deleted.is.null,is_deleted.eq.false');
+
+      const { data: tgAccess } = await supabase
+        .from('telegram_access')
+        .select('course_id, joined_telegram_user_id, joined_telegram_username')
+        .eq('user_id', user.id);
+
+      const tgMap = new Map<string, { id: number | null; username: string | null }>();
+      (tgAccess || []).forEach((ta: any) => {
+        tgMap.set(ta.course_id, {
+          id: ta.joined_telegram_user_id ? Number(ta.joined_telegram_user_id) : null,
+          username: ta.joined_telegram_username || null
+        });
+      });
+
+      const list = (purchases || []).map((p: any) => {
+        const c = p.courses || {};
+        const access = tgMap.get(p.course_id);
+        return {
+          course_id: p.course_id,
+          title: c.title || 'Untitled Course',
+          thumbnail: c.thumbnail_url || '/placeholder.svg',
+          course_number: c.course_number,
+          joined_telegram_user_id: access?.id || null,
+          joined_telegram_username: access?.username || null
+        };
+      });
+
+      setCourseAccessList(list);
+    } catch (e) {
+      console.error('fetchCourseAccess error:', e);
+    } finally {
+      setLoadingCourseAccess(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchCourseAccess();
+    }
+  }, [user]);
+
   const handleSectionChange = (section: Section) => {
     setActiveSection(section);
     window.history.replaceState(null, "", `/settings/${section}`);
@@ -110,35 +162,43 @@ const AccountSettings = () => {
     }
     setUploading(true);
     const ext = file.name.split(".").pop();
-    const filePath = `${user.id}/avatar.${ext}`;
-    const { error: uploadError } = await supabase.storage.from("avatars").upload(filePath, file, { upsert: true });
+    const filePath = `avatars/${user.id}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("profiles").upload(filePath, file, { upsert: true });
     if (uploadError) {
       toast({ title: "Upload failed", description: uploadError.message, variant: "destructive" });
-    } else {
-      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(filePath);
-      setAvatarUrl(publicUrl);
-      await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id);
-      toast({ title: "Avatar updated" });
+      setUploading(false);
+      return;
     }
+    const { data: urlData } = supabase.storage.from("profiles").getPublicUrl(filePath);
+    setAvatarUrl(urlData.publicUrl);
     setUploading(false);
+    toast({ title: "Avatar uploaded" });
   };
 
   const handleSaveProfile = async () => {
     if (!user) return;
-    const trimmed = fullName.trim();
-    if (!trimmed) { toast({ title: "Name cannot be empty", variant: "destructive" }); return; }
-    if (trimmed.length > 100) { toast({ title: "Name must be under 100 characters", variant: "destructive" }); return; }
     setSaving(true);
-    const { error } = await supabase.from("profiles").update({ 
-      full_name: trimmed,
-      telegram_username: telegramUsername.trim()
-    }).eq("id", user.id);
-    if (error) toast({ title: "Save failed", description: error.message, variant: "destructive" });
-    else toast({ title: "Profile updated" });
+    const payload: any = {
+      full_name: fullName.trim(),
+      avatar_url: avatarUrl,
+      updated_at: new Date().toISOString()
+    };
+    if (!telegramId && telegramUsername.trim()) {
+      payload.telegram_username = telegramUsername.trim().replace(/^@/, '');
+    }
+    const { error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", user.id);
     setSaving(false);
+    if (error) {
+      toast({ title: "Error saving profile", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Profile saved successfully" });
+    }
   };
 
-  const handleConnectTelegram = async () => {
+  const handleConnectTelegram = async (courseId?: string) => {
     if (!user) return;
     setConnectingTelegram(true);
     try {
@@ -148,14 +208,15 @@ const AccountSettings = () => {
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${session?.access_token || ""}`
-        }
+        },
+        body: JSON.stringify(courseId ? { course_id: courseId } : {})
       });
       const data = await res.json();
       if (data.success && data.url) {
         window.open(data.url, "_blank");
         toast({
-          title: "Telegram Connection Initiated",
-          description: "Click 'Start' in the bot to complete linking your account."
+          title: "Telegram Bot Opened",
+          description: "Click 'Start' in the bot to connect and access your course."
         });
       } else {
         toast({
@@ -309,87 +370,114 @@ const AccountSettings = () => {
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                {telegramId ? (
-                  <div className="space-y-4">
-                    <div className="rounded-lg bg-muted/40 p-4 border border-border/60 text-sm space-y-1.5">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Telegram User ID:</span>
-                        <span className="font-mono font-medium text-foreground">{telegramId}</span>
-                      </div>
-                      {telegramUsername && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Telegram Username:</span>
-                          <span className="font-medium text-primary">@{telegramUsername.replace(/^@/, '')}</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2.5 pt-1">
-                      <Button
-                        type="button"
-                        className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
-                        onClick={() => window.open("https://t.me/CourseVerseofficialbot", "_blank")}
-                      >
-                        <Send className="h-4 w-4" />
-                        Open My Courses Bot
-                        <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                      </Button>
-                    </div>
-
-                    {/* Security Notice Box */}
-                    <div className="rounded-lg bg-card border border-border/80 p-4 text-xs space-y-2.5 mt-3">
-                      <div className="flex items-center gap-2 text-foreground font-semibold">
-                        <Shield className="h-4 w-4 text-primary" />
-                        <span>Account Protection Active</span>
-                      </div>
-                      <p className="text-muted-foreground leading-relaxed">
-                        For account security and fraud prevention, your verified Telegram ID is permanently bound to this CourseVerse account. To transfer or update your registered Telegram account, please contact our support team.
-                      </p>
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <a
-                          href="https://t.me/courseversesupport"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
-                        >
-                          <Send className="h-3.5 w-3.5 text-primary" />
-                          Telegram Support
-                        </a>
-                        <Link
-                          to="/contact"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
-                        >
-                          <Mail className="h-3.5 w-3.5 text-primary" />
-                          Email Support
-                        </Link>
-                        <Link
-                          to="/help"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
-                        >
-                          <HelpCircle className="h-3.5 w-3.5 text-primary" />
-                          Help Center
-                        </Link>
-                      </div>
-                    </div>
+              <CardContent className="p-6 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-lg bg-primary/5 border border-primary/20">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Official Course Delivery Bot</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Access all your authorized course lectures & materials in one place.</p>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Connect your Telegram account to access your purchased courses directly via our official Telegram bot (<strong className="text-foreground">@CourseVerseofficialbot</strong>) with single-use secure passes.
+                  <Button
+                    type="button"
+                    className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium shrink-0"
+                    onClick={() => window.open("https://t.me/CourseVerseofficialbot", "_blank")}
+                  >
+                    <Send className="h-4 w-4" />
+                    Open My Courses Bot
+                    <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+                  </Button>
+                </div>
+
+                {/* Per-Course Telegram Access List */}
+                {courseAccessList.length > 0 && (
+                  <div className="space-y-3 pt-1">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Course Telegram Bindings ({courseAccessList.length})
                     </p>
-                    <Button
-                      type="button"
-                      onClick={handleConnectTelegram}
-                      disabled={connectingTelegram}
-                      className="gap-2 shadow-sm"
-                    >
-                      <Send className="h-4 w-4" />
-                      {connectingTelegram ? "Generating link..." : "Connect Telegram Account"}
-                      <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-                    </Button>
+                    <div className="space-y-2">
+                      {courseAccessList.map((item) => (
+                        <div
+                          key={item.course_id}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-card border border-border/80 gap-3 hover:border-primary/30 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <img
+                              src={item.thumbnail}
+                              alt={item.title}
+                              className="w-14 h-9 rounded object-cover shrink-0 border border-border"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">
+                                {item.course_number ? `#${item.course_number} ` : ''}{item.title}
+                              </p>
+                              {item.joined_telegram_user_id ? (
+                                <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-mono">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  {item.joined_telegram_username ? `@${item.joined_telegram_username}` : `ID: ${item.joined_telegram_user_id}`}
+                                </p>
+                              ) : (
+                                <p className="text-xs text-amber-600 dark:text-amber-400">Not linked to Telegram yet</p>
+                              )}
+                            </div>
+                          </div>
+                          {item.joined_telegram_user_id ? (
+                            <Badge
+                              variant="outline"
+                              className="self-start sm:self-auto bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[11px] gap-1 shrink-0"
+                            >
+                              <Shield className="h-3 w-3" /> Bound & Locked
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleConnectTelegram(item.course_id)}
+                              disabled={connectingTelegram}
+                              className="self-start sm:self-auto text-xs gap-1 h-8 border-primary/30 text-primary hover:bg-primary/10 shrink-0"
+                            >
+                              <Send className="h-3 w-3" /> Connect Course
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
+
+                {/* Security Notice Box */}
+                <div className="rounded-lg bg-muted/20 border border-border/80 p-4 text-xs space-y-2.5">
+                  <div className="flex items-center gap-2 text-foreground font-semibold">
+                    <Shield className="h-4 w-4 text-primary" />
+                    <span>Account Security & Anti-Piracy Protection</span>
+                  </div>
+                  <p className="text-muted-foreground leading-relaxed">
+                    For fraud prevention and secure delivery, each course is locked to its verified Telegram identity. To transfer or update your registered Telegram account, please reach out to our support team with your registered email.
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <a
+                      href="https://t.me/courseversesupport"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
+                    >
+                      <Send className="h-3.5 w-3.5 text-primary" />
+                      Telegram Support
+                    </a>
+                    <Link
+                      to="/contact"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
+                    >
+                      <Mail className="h-3.5 w-3.5 text-primary" />
+                      Email Support
+                    </Link>
+                    <Link
+                      to="/help"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted/70 hover:bg-muted text-foreground font-medium transition-colors"
+                    >
+                      <HelpCircle className="h-3.5 w-3.5 text-primary" />
+                      Help Center
+                    </Link>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>

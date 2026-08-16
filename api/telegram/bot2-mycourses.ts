@@ -118,6 +118,7 @@ async function verifyUserLiveAccess(userId: string, courseId: string): Promise<{
 }
 
 async function resolveUserProfile(tgUserId: number, tgUsername?: string) {
+  // 1. By profiles.telegram_id
   const { data: byId } = await supabase
     .from('profiles')
     .select('id, full_name, is_blocked, telegram_id, telegram_username')
@@ -126,6 +127,24 @@ async function resolveUserProfile(tgUserId: number, tgUsername?: string) {
 
   if (byId) return byId;
 
+  // 2. By telegram_access.joined_telegram_user_id
+  const { data: accessRows } = await supabase
+    .from('telegram_access')
+    .select('user_id')
+    .eq('joined_telegram_user_id', tgUserId)
+    .limit(1);
+
+  if (accessRows && accessRows.length > 0) {
+    const { data: byAccess } = await supabase
+      .from('profiles')
+      .select('id, full_name, is_blocked, telegram_id, telegram_username')
+      .eq('id', accessRows[0].user_id)
+      .maybeSingle();
+
+    if (byAccess) return byAccess;
+  }
+
+  // 3. By username match
   if (tgUsername) {
     const cleanUsername = tgUsername.replace(/^@/, '').trim();
     const { data: byUsername } = await supabase
@@ -134,36 +153,7 @@ async function resolveUserProfile(tgUserId: number, tgUsername?: string) {
       .ilike('telegram_username', cleanUsername)
       .maybeSingle();
 
-    if (byUsername) {
-      await supabase
-        .from('profiles')
-        .update({ telegram_id: tgUserId })
-        .eq('id', byUsername.id);
-      return { ...byUsername, telegram_id: tgUserId };
-    }
-  }
-
-  const { data: accessRow } = await supabase
-    .from('telegram_access')
-    .select('user_id')
-    .eq('joined_telegram_user_id', tgUserId)
-    .limit(1)
-    .maybeSingle();
-
-  if (accessRow && accessRow.user_id) {
-    const { data: byAccess } = await supabase
-      .from('profiles')
-      .select('id, full_name, is_blocked, telegram_id, telegram_username')
-      .eq('id', accessRow.user_id)
-      .maybeSingle();
-
-    if (byAccess) {
-      await supabase
-        .from('profiles')
-        .update({ telegram_id: tgUserId })
-        .eq('id', byAccess.id);
-      return { ...byAccess, telegram_id: tgUserId };
-    }
+    if (byUsername) return byUsername;
   }
 
   return null;
@@ -214,7 +204,7 @@ export default async function handler(req: any, res: any) {
           const linkTokenId = payload.replace(/^link_/, '').trim();
           const { data: linkToken } = await supabase
             .from('telegram_link_tokens')
-            .select('id, user_id, status, expires_at')
+            .select('id, user_id, course_id, status, expires_at')
             .eq('id', linkTokenId)
             .maybeSingle();
 
@@ -236,6 +226,20 @@ export default async function handler(req: any, res: any) {
             return res.status(200).json({ status: 'ok' });
           }
 
+          // If token has a specific course_id, bind it in telegram_access for this user
+          if (linkToken.course_id) {
+            await supabase
+              .from('telegram_access')
+              .upsert({
+                user_id: linkToken.user_id,
+                course_id: linkToken.course_id,
+                joined_telegram_user_id: senderTgId,
+                joined_telegram_username: senderUsername || null,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'user_id, course_id' });
+          }
+
+          // Update primary profile telegram info
           const updatePayload: any = { telegram_id: senderTgId };
           if (senderUsername) updatePayload.telegram_username = senderUsername;
 
@@ -334,6 +338,7 @@ export default async function handler(req: any, res: any) {
       if (callbackData.startsWith('menu_courses:')) {
         const page = parseInt(callbackData.split(':')[1] || '0', 10);
 
+        // 1. Get all courses purchased by user
         const { data: purchaseRows } = await supabase
           .from('purchases')
           .select('course_id')
@@ -351,7 +356,7 @@ export default async function handler(req: any, res: any) {
           .or(`end_date.is.null,end_date.gt.${nowIso}`)
           .maybeSingle();
 
-        let accessibleCourseIds = Array.from(purchasedIds);
+        let allUserCourses = Array.from(purchasedIds);
 
         if (activeSub) {
           const { data: allPublished } = await supabase
@@ -361,9 +366,28 @@ export default async function handler(req: any, res: any) {
             .eq('is_published', true);
 
           (allPublished || []).forEach((c: any) => {
-            if (!purchasedIds.has(c.id)) accessibleCourseIds.push(c.id);
+            if (!purchasedIds.has(c.id)) allUserCourses.push(c.id);
           });
         }
+
+        // 2. Fetch telegram_access rows for this user to check per-course binding
+        const { data: accessRows } = await supabase
+          .from('telegram_access')
+          .select('course_id, joined_telegram_user_id')
+          .eq('user_id', profile.id);
+
+        const accessMap = new Map<string, number | null>();
+        (accessRows || []).forEach((ar: any) => {
+          accessMap.set(ar.course_id, ar.joined_telegram_user_id ? Number(ar.joined_telegram_user_id) : null);
+        });
+
+        // 3. Filter courses: Include course IF (linked to senderTgId) OR (not linked to any other TG ID yet)
+        const senderNumId = Number(senderTgId);
+        const accessibleCourseIds = allUserCourses.filter((courseId) => {
+          const boundTgId = accessMap.get(courseId);
+          if (!boundTgId) return true; // Unbound -> accessible by user's primary/active telegram
+          return boundTgId === senderNumId; // Bound specifically to this telegram account
+        });
 
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const validIds = accessibleCourseIds.filter((id) => uuidRegex.test(id));
@@ -373,7 +397,7 @@ export default async function handler(req: any, res: any) {
             BOT2_TELEGRAM_TOKEN,
             chatId,
             messageId,
-            'You haven\'t purchased any courses yet.',
+            'No courses found for this Telegram account.\n\nIf you linked other courses with a different Telegram account, open them from that respective account.',
             {
               reply_markup: {
                 inline_keyboard: [
@@ -448,6 +472,17 @@ export default async function handler(req: any, res: any) {
           );
           return res.status(200).json({ status: 'ok' });
         }
+
+        // Ensure binding in telegram_access
+        await supabase
+          .from('telegram_access')
+          .upsert({
+            user_id: profile.id,
+            course_id: courseId,
+            joined_telegram_user_id: senderTgId,
+            joined_telegram_username: senderUsername || null,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id, course_id' });
 
         const { data: tokenRow, error: tokenErr } = await supabase
           .from('telegram_delivery_tokens')

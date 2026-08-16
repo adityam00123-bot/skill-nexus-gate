@@ -12,7 +12,7 @@ const AUTO_DELETE_HOURS = parseInt(process.env.AUTO_DELETE_HOURS || '46', 10);
 const UNIFIED_ERROR_MESSAGE = `❌ You haven't purchased this course.\n\n🛒 Purchase now: ${WEBSITE_COURSE_URL_BASE}`;
 
 function buildDeliveryClosingMessage(courseTitle: string, lectureCount: number): string {
-  return `✅ ${courseTitle} delivered — ${lectureCount} lectures.\n\n` +
+  return `✅ ${courseTitle} delivered — ${lectureCount} items.\n\n` +
     `⏳ For security, these files auto-remove from this chat in ${AUTO_DELETE_HOURS} hours. Forwarding, saving, and downloading are disabled the whole time, so just revisit them here whenever you want to watch.\n\n` +
     `📚 Want it again after they're gone? Open @${BOT2_USERNAME} anytime and tap this course for a fresh copy.\n\n` +
     `Happy learning! 🚀`;
@@ -103,6 +103,50 @@ async function verifyUserLiveAccess(userId: string, courseId: string): Promise<{
   }
 }
 
+function detectFileType(post: any): { fileType: string; duration: number } {
+  if (post.video) {
+    return { fileType: 'video', duration: post.video.duration || 0 };
+  }
+  if (post.audio || post.voice) {
+    return { fileType: 'audio', duration: post.audio?.duration || post.voice?.duration || 0 };
+  }
+  if (post.sticker) {
+    return { fileType: 'sticker', duration: 0 };
+  }
+  if (post.document) {
+    const fileName = (post.document.file_name || '').toLowerCase();
+    const mimeType = (post.document.mime_type || '').toLowerCase();
+
+    if (
+      fileName.endsWith('.mp4') ||
+      fileName.endsWith('.mkv') ||
+      fileName.endsWith('.mov') ||
+      fileName.endsWith('.avi') ||
+      mimeType.startsWith('video/')
+    ) {
+      return { fileType: 'video', duration: 0 };
+    }
+    if (
+      fileName.endsWith('.rar') ||
+      fileName.endsWith('.zip') ||
+      fileName.endsWith('.7z') ||
+      fileName.endsWith('.tar') ||
+      mimeType.includes('zip') ||
+      mimeType.includes('rar')
+    ) {
+      return { fileType: 'archive', duration: 0 };
+    }
+    if (fileName.endsWith('.pdf') || mimeType.includes('pdf')) {
+      return { fileType: 'pdf', duration: 0 };
+    }
+    return { fileType: 'material', duration: 0 };
+  }
+  if (post.photo) {
+    return { fileType: 'photo', duration: 0 };
+  }
+  return { fileType: 'text', duration: 0 };
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -158,7 +202,10 @@ export default async function handler(req: any, res: any) {
             });
           }
         } else {
-          const isContent = !!(post.video || post.document || post.audio || post.animation || post.video_note || post.photo || post.sticker || post.text);
+          const isContent = !!(
+            post.video || post.document || post.audio || post.voice ||
+            post.animation || post.video_note || post.photo || post.sticker || post.text
+          );
 
           if (isContent) {
             const { data: state } = await supabase
@@ -171,7 +218,7 @@ export default async function handler(req: any, res: any) {
               const courseId = state.current_course_id;
               const channelId = post.chat?.id ? post.chat.id.toString() : STORAGE_CHANNEL_ID;
               const messageId = post.message_id.toString();
-              const durationSeconds = post.video?.duration || post.audio?.duration || 0;
+              const { fileType, duration } = detectFileType(post);
 
               await supabase
                 .from('course_video_log')
@@ -179,23 +226,30 @@ export default async function handler(req: any, res: any) {
                   course_id: courseId,
                   channel_id: channelId,
                   telegram_message_id: messageId,
-                  duration_seconds: durationSeconds,
+                  duration_seconds: duration,
+                  file_type: fileType,
                   posted_at: new Date(post.date * 1000).toISOString()
                 }, { onConflict: 'channel_id, telegram_message_id' });
 
-              const { data: allVideos } = await supabase
+              const { data: allItems } = await supabase
                 .from('course_video_log')
-                .select('duration_seconds')
+                .select('duration_seconds, file_type')
                 .eq('course_id', courseId);
 
-              if (allVideos) {
-                const total_lectures = allVideos.length;
-                const totalDurationSecs = allVideos.reduce((sum, v) => sum + (v.duration_seconds || 0), 0);
+              if (allItems) {
+                const videoItems = allItems.filter(i => i.file_type === 'video' || i.file_type === 'audio');
+                const materialItems = allItems.filter(i => i.file_type === 'pdf' || i.file_type === 'archive' || i.file_type === 'material');
+
+                // If course has only archives/files (no stream videos), total_lectures counts the resource packs
+                const total_lectures = videoItems.length > 0 ? videoItems.length : (allItems.filter(i => i.file_type !== 'sticker').length || 1);
+                const total_materials = videoItems.length > 0 ? materialItems.length : 0;
+
+                const totalDurationSecs = allItems.reduce((sum, v) => sum + (v.duration_seconds || 0), 0);
                 const duration_hours = Math.round((totalDurationSecs / 3600) * 10) / 10;
 
                 await supabase
                   .from('courses')
-                  .update({ total_lectures, duration_hours })
+                  .update({ total_lectures, total_materials, duration_hours })
                   .eq('id', courseId);
               }
             } else {

@@ -32,19 +32,23 @@ const getProgress = (courseId: string) => {
   return hash % 100;
 };
 
-const openTelegramCourseAccess = async () => {
+const openTelegramCourseAccess = async (courseId?: string) => {
   try {
     const session = (await supabase.auth.getSession()).data.session;
     if (!session) {
       window.open("https://t.me/CourseVerseofficialbot", "_blank");
       return;
     }
+    const bodyPayload: any = {};
+    if (courseId) bodyPayload.course_id = courseId;
+
     const res = await fetch("/api/telegram/generate-link-token", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
+      body: JSON.stringify(bodyPayload),
     });
     const data = await res.json();
     if (data.success && data.url) {
@@ -120,7 +124,7 @@ const CourseRow = ({
             className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs gap-1.5 h-8 font-medium shadow-sm"
             onClick={(e) => {
               e.preventDefault();
-              openTelegramCourseAccess();
+              openTelegramCourseAccess(course.id);
             }}
           >
             <MessageCircle className="h-3.5 w-3.5" /> View Course

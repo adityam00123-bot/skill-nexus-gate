@@ -448,29 +448,41 @@ export default function AdminUsers() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paged.map((u) => (
-                  <TableRow key={u.id} className="border-[#334155] hover:bg-[#334155]/50 transition-colors">
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9 border border-[#334155]">
-                          <AvatarImage src={u.avatar_url || ""} />
-                          <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
-                            {(u.full_name || u.email || "U").charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col max-w-[150px] lg:max-w-[200px]">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-sm truncate">{u.full_name || "No Name"}</span>
-                            {u.distinct_telegram_ids >= 4 && (
-                              <span title="Multiple Telegram IDs detected — possible account sharing" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 whitespace-nowrap">
-                                <AlertTriangle className="h-3 w-3" /> Multi-TG
-                              </span>
-                            )}
+                {paged.map((u) => {
+                  const isMultiFlag = u.distinct_telegram_ids > 3;
+                  return (
+                    <TableRow
+                      key={u.id}
+                      className={`border-[#334155] transition-colors ${
+                        isMultiFlag
+                          ? 'bg-red-500/10 border-l-4 border-l-red-500 hover:bg-red-500/20'
+                          : 'hover:bg-[#334155]/50'
+                      }`}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9 border border-[#334155]">
+                            <AvatarImage src={u.avatar_url || ""} />
+                            <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
+                              {(u.full_name || u.email || "U").charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col max-w-[150px] lg:max-w-[200px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-sm truncate">{u.full_name || "No Name"}</span>
+                              {isMultiFlag && (
+                                <span
+                                  title="Multiple Telegram IDs detected across purchases (>3 IDs)"
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/40 whitespace-nowrap animate-pulse"
+                                >
+                                  <AlertTriangle className="h-3 w-3" /> 🚨 {u.distinct_telegram_ids} TG Accounts
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground truncate">{u.email || "—"}</span>
                           </div>
-                          <span className="text-xs text-muted-foreground truncate">{u.email || "—"}</span>
                         </div>
-                      </div>
-                    </TableCell>
+                      </TableCell>
                     <TableCell>
                       <Badge variant={u.role === "admin" ? "default" : "outline"} className={u.role === "admin" ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground border-[#334155]"}>
                         {u.role === "admin" ? "Admin" : "User"}
@@ -496,8 +508,9 @@ export default function AdminUsers() {
                         <Button variant="ghost" size="icon" onClick={() => setDeleteDialog({ isOpen: true, user: u })} className="h-8 w-8 hover:bg-red-500/20 hover:text-red-500" title="Delete User"><Trash2 className="h-4 w-4 text-red-400" /></Button>
                       </div>
                     </TableCell>
-                  </TableRow>
-                ))}
+                    </TableRow>
+                  );
+                })}
                 {paged.length === 0 && (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-12">
                     <div className="flex flex-col items-center gap-2"><Users className="h-10 w-10 text-[#334155]" /><p>No users found matching filters</p></div>
@@ -558,6 +571,17 @@ export default function AdminUsers() {
 
               {/* TABS CONTENT */}
               <div className="py-2">
+                {viewUser.distinct_telegram_ids > 3 && (
+                  <div className="p-3.5 mb-4 rounded-lg bg-red-500/15 border border-red-500/40 flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-red-300">🚨 High-Risk Multi-Account Alert ({viewUser.distinct_telegram_ids} Telegram IDs)</p>
+                      <p className="text-xs text-red-200/80 mt-0.5 leading-relaxed">
+                        This user has connected <span className="font-bold text-white underline">{viewUser.distinct_telegram_ids} different Telegram IDs</span> across their course purchases. Check the <span className="font-semibold text-white">Finance / Purchase History</span> tab to inspect each course's bound Telegram handle and User ID.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 
                 {activeTab === "basic" && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

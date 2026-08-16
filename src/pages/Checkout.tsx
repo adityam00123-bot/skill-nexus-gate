@@ -54,7 +54,8 @@ function TelegramAccessCard({ course, user }: { course: any, user: any }) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token || ''}`
-        }
+        },
+        body: JSON.stringify({ course_id: course.id })
       });
       const data = await res.json();
       if (data.success && data.url) {
