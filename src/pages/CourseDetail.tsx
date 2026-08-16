@@ -105,6 +105,7 @@ const CourseDetail = () => {
   const [mentorCourses, setMentorCourses] = useState<any[]>([]);
   const [relatedCourses, setRelatedCourses] = useState<any[]>([]);
   const [notFound, setNotFound] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [persistentAccessLink, setPersistentAccessLink] = useState<string | null>(null);
   const [connectingTelegram, setConnectingTelegram] = useState(false);
 
