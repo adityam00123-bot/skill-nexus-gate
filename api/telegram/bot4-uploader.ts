@@ -15,15 +15,15 @@ function toMathBold(text: string): string {
   if (!text) return '';
   return text.split('').map(char => {
     const code = char.charCodeAt(0);
-    // A-Z
+    // A-Z: 0x41..0x5A -> 0x1D400..0x1D419
     if (code >= 65 && code <= 90) {
       return String.fromCodePoint(0x1D400 + (code - 65));
     }
-    // a-z
+    // a-z: 0x61..0x7A -> 0x1D41A..0x1D433
     if (code >= 97 && code <= 122) {
       return String.fromCodePoint(0x1D41A + (code - 97));
     }
-    // 0-9
+    // 0-9: 0x30..0x39 -> 0x1D7CE..0x1D7D7
     if (code >= 48 && code <= 57) {
       return String.fromCodePoint(0x1D7CE + (code - 48));
     }
@@ -92,23 +92,30 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    if (!update || !update.message) {
+    const msg = update?.message || update?.channel_post || update?.edited_channel_post;
+    if (!msg) {
       return res.status(200).json({ status: 'ok' });
     }
 
-    const msg = update.message;
-    const chatId = msg.chat?.id;
+    const chatId = msg.chat?.id ? String(msg.chat.id) : '';
+    const isDirectMessage = !update?.channel_post && !update?.edited_channel_post;
+
+    // Loop prevention: ignore messages originating from the target Storage Channel
+    if (chatId === String(STORAGE_CHANNEL_ID)) {
+      return res.status(200).json({ status: 'ok' });
+    }
+
     const text = (msg.text || '').trim();
     const caption = (msg.caption || '').trim();
     const contentText = caption || text;
 
-    // 1. /start command
-    if (text.startsWith('/start')) {
+    // 1. /start command (in DM)
+    if (text.startsWith('/start') && isDirectMessage) {
       await callTelegramApi('sendMessage', {
         chat_id: chatId,
         text: `🚀 <b>CourseVerse Auto-Uploader & Formatter Bot</b>\n\n` +
           `<b>How it works:</b>\n` +
-          `1️⃣ <b>Course Poster:</b> Send a photo with caption <code>#&lt;number&gt;</code> (e.g. <code>#1507</code>).\n` +
+          `1️⃣ <b>Course Poster:</b> Send a photo with caption <code>#&lt;number&gt;</code> (e.g. <code>#1507</code>) into your Upload Channel or DM.\n` +
           `   • The bot fetches the title from the website DB.\n` +
           `   • Formats it with mathematical bold font & links.\n` +
           `   • Posts the stylized poster directly to the Storage Channel!\n\n` +
@@ -116,7 +123,7 @@ export default async function handler(req: any, res: any) {
           `   • The bot auto-numbers them (Part 1, Part 2... / PDF 1).\n` +
           `   • Appends the official CourseVerse footer links.\n` +
           `   • Posts them seamlessly to the Storage Channel!\n\n` +
-          `⚠️ <i>Make sure @${BOT4_USERNAME} is added as an Admin in your Storage Channel with Post permissions.</i>`,
+          `⚠️ <i>Make sure @${BOT4_USERNAME} is added as an Admin in both your Upload Channel and your Storage Channel with Post permissions.</i>`,
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
@@ -197,7 +204,7 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      // Update state
+      // Update state in Supabase
       if (course) {
         await supabase
           .from('telegram_ingestion_state')
@@ -209,22 +216,24 @@ export default async function handler(req: any, res: any) {
           }, { onConflict: 'id' });
       }
 
-      if (postResult && postResult.ok) {
-        await callTelegramApi('sendMessage', {
-          chat_id: chatId,
-          text: `✅ <b>Course #${courseNum} Header Posted to Storage Channel!</b>\n\n` +
-            `📌 <b>Title:</b> ${fullFormatted}\n\n` +
-            `👉 <i>Now send lecture videos, PDFs, audios, or links — the bot will automatically format and post them with sequence numbers!</i>`,
-          parse_mode: 'HTML'
-        });
-      } else {
-        await callTelegramApi('sendMessage', {
-          chat_id: chatId,
-          text: `⚠️ <b>Could not post to Storage Channel.</b>\n\n` +
-            `Error: <code>${postResult?.description || JSON.stringify(postResult)}</code>\n\n` +
-            `<i>Make sure @${BOT4_USERNAME} is an Admin in the channel with "Post Messages" permission.</i>`,
-          parse_mode: 'HTML'
-        });
+      if (isDirectMessage) {
+        if (postResult && postResult.ok) {
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            text: `✅ <b>Course #${courseNum} Header Posted to Storage Channel!</b>\n\n` +
+              `📌 <b>Title:</b> ${fullFormatted}\n\n` +
+              `👉 <i>Now send lecture videos, PDFs, audios, or links — the bot will automatically format and post them with sequence numbers!</i>`,
+            parse_mode: 'HTML'
+          });
+        } else {
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            text: `⚠️ <b>Could not post to Storage Channel.</b>\n\n` +
+              `Error: <code>${postResult?.description || JSON.stringify(postResult)}</code>\n\n` +
+              `<i>Make sure @${BOT4_USERNAME} is an Admin in the Storage Channel with "Post Messages" permission.</i>`,
+            parse_mode: 'HTML'
+          });
+        }
       }
 
       return res.status(200).json({ status: 'ok' });
@@ -239,11 +248,13 @@ export default async function handler(req: any, res: any) {
       .maybeSingle();
 
     if (!state || !state.current_course_id) {
-      await callTelegramApi('sendMessage', {
-        chat_id: chatId,
-        text: `⚠️ <b>No Active Course Selected!</b>\n\nPlease first send a photo with <code>#&lt;course_number&gt;</code> (e.g. <code>#1507</code>) to start uploading a course.`,
-        parse_mode: 'HTML'
-      });
+      if (isDirectMessage) {
+        await callTelegramApi('sendMessage', {
+          chat_id: chatId,
+          text: `⚠️ <b>No Active Course Selected!</b>\n\nPlease first send a photo with <code>#&lt;course_number&gt;</code> (e.g. <code>#1507</code>) to start uploading a course.`,
+          parse_mode: 'HTML'
+        });
+      }
       return res.status(200).json({ status: 'ok' });
     }
 
@@ -278,7 +289,7 @@ export default async function handler(req: any, res: any) {
         supports_streaming: true
       });
 
-      if (result && result.ok) {
+      if (isDirectMessage && result && result.ok) {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: `✅ <b>Posted:</b> ⭐️ ${nextIndex}. ${shortBold} – Part ${nextIndex}`,
@@ -301,7 +312,7 @@ export default async function handler(req: any, res: any) {
         parse_mode: 'HTML'
       });
 
-      if (result && result.ok) {
+      if (isDirectMessage && result && result.ok) {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: `✅ <b>Posted:</b> ⭐️ ${nextIndex}. ${shortBold} – Audio ${nextIndex}`,
@@ -328,7 +339,7 @@ export default async function handler(req: any, res: any) {
         parse_mode: 'HTML'
       });
 
-      if (result && result.ok) {
+      if (isDirectMessage && result && result.ok) {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: `✅ <b>Posted:</b> ${docEmoji} ${nextIndex}. ${shortBold} – ${docLabel}`,
@@ -344,11 +355,13 @@ export default async function handler(req: any, res: any) {
         chat_id: STORAGE_CHANNEL_ID,
         sticker: msg.sticker.file_id
       });
-      await callTelegramApi('sendMessage', {
-        chat_id: chatId,
-        text: `✅ <b>Posted Sticker</b> to Storage Channel!`,
-        parse_mode: 'HTML'
-      });
+      if (isDirectMessage) {
+        await callTelegramApi('sendMessage', {
+          chat_id: chatId,
+          text: `✅ <b>Posted Sticker</b> to Storage Channel!`,
+          parse_mode: 'HTML'
+        });
+      }
       return res.status(200).json({ status: 'ok' });
     }
 
@@ -366,7 +379,7 @@ export default async function handler(req: any, res: any) {
         disable_web_page_preview: false
       });
 
-      if (result && result.ok) {
+      if (isDirectMessage && result && result.ok) {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: `✅ <b>Posted Link/Resource</b> to Storage Channel!`,
@@ -377,7 +390,7 @@ export default async function handler(req: any, res: any) {
     }
 
   } catch (error: any) {
-    console.error('[bot4-uploader] Error:', error);
+    console.error('[bot4-uploader] Fatal Error:', error);
   }
 
   return res.status(200).json({ status: 'ok' });
