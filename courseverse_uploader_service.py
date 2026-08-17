@@ -43,30 +43,8 @@ VAULT_LINK = "https://t.me/+FZIshSGq54FkYzg1"
 
 app = Client(SESSION_PATH, api_id=API_ID, api_hash=API_HASH)
 
-def to_math_bold(text: str) -> str:
-    res = []
-    for char in text:
-        code = ord(char)
-        if 65 <= code <= 90:
-            res.append(chr(0x1D400 + (code - 65)))
-        elif 97 <= code <= 122:
-            res.append(chr(0x1D41A + (code - 97)))
-        elif 48 <= code <= 57:
-            res.append(chr(0x1D7CE + (code - 48)))
-        else:
-            res.append(char)
-    return "".join(res)
-
-def format_title(raw_title: str):
-    clean = raw_title.strip()
-    clean = re.sub(r"^#\s*\d+\s*[-:.]*\s*", "", clean, flags=re.IGNORECASE).strip()
-    for sep in [' - ', ' – ', ' — ', ': ']:
-        if sep in clean:
-            parts = clean.split(sep, 1)
-            bold_part = to_math_bold(parts[0].strip())
-            return f"{bold_part} – {parts[1].strip()}", bold_part
-    bold_all = to_math_bold(clean)
-    return bold_all, bold_all
+def utf16_len(s: str) -> int:
+    return len(s.encode('utf-16-le')) // 2
 
 def supabase_get(endpoint: str, params: dict = None):
     try:
@@ -98,100 +76,114 @@ def supabase_post(endpoint: str, data: dict):
         logger.error(f"Supabase POST error ({endpoint}): {e}")
         return False
 
-def build_entities_and_text(header_line: str, title_line: str, footer_star=True):
-    star_char = "⭐️"
-    div_char = "➗"
-    badge_char = "🪪"
-    vault_char = "🎯"
-
-    divider_line = div_char * 14
-
+def build_caption_with_exact_entities(header_line: str, title_line: str):
     line1 = f"{header_line}\n" if header_line else ""
-    line2 = f"{star_char} {title_line}\n"
-    line3 = f"{divider_line}\n"
-    line4_prefix = "Dm "
-    line4_link_text = "●─CourseVerse™ </>"
-    line4_middle = " "
-    line4_badge = badge_char
-    line4_suffix = " For more\n"
-    line5 = f"{divider_line}\n"
-    line6_prefix = f"{vault_char} Explore Our Course Valut – "
-    line6_link_text = "Check it Out"
+    star = "⭐️"
+    line2_title = f"{title_line}\n"
+    divider_char = "➗"
+    divider_14 = divider_char * 14
+    line3 = f"{divider_14}\n"
+    dm_prefix = "Dm "
+    dm_link_text = "●─CourseVerse™ </>"
+    verified = "✔️"
+    dm_suffix = " For more\n"
+    line5 = f"{divider_14}\n"
+    vault_icon = "✅"
+    vault_prefix = " Explore Our Course Valut – "
+    vault_link_text = "Check it Out"
 
     full_text = (
         f"{line1}"
-        f"{line2}"
+        f"{star}{line2_title}"
         f"{line3}"
-        f"{line4_prefix}{line4_link_text}{line4_middle}{line4_badge}{line4_suffix}"
+        f"{dm_prefix}{dm_link_text}{verified}{dm_suffix}"
         f"{line5}"
-        f"{line6_prefix}{line6_link_text}"
+        f"{vault_icon}{vault_prefix}{vault_link_text}"
     )
 
     entities = []
 
-    # Star custom emoji
-    offset_star = len(line1)
+    # 1. Star custom emoji
+    offset = utf16_len(line1)
     entities.append(types.MessageEntity(
         type=enums.MessageEntityType.CUSTOM_EMOJI,
-        offset=offset_star,
-        length=len(star_char),
+        offset=offset,
+        length=utf16_len(star),
         custom_emoji_id=EMOJI_STAR
     ))
+    offset += utf16_len(star)
 
-    # Divider line 1
-    offset_div1 = len(line1) + len(line2)
-    for i in range(14):
+    # 2. Bold title
+    entities.append(types.MessageEntity(
+        type=enums.MessageEntityType.BOLD,
+        offset=offset,
+        length=utf16_len(line2_title.rstrip('\n')),
+    ))
+    offset += utf16_len(line2_title)
+
+    # 3. Divider line 1 custom emojis (14 items)
+    for _ in range(14):
         entities.append(types.MessageEntity(
             type=enums.MessageEntityType.CUSTOM_EMOJI,
-            offset=offset_div1 + i * len(div_char),
-            length=len(div_char),
+            offset=offset,
+            length=utf16_len(divider_char),
             custom_emoji_id=EMOJI_DIVIDER
         ))
+        offset += utf16_len(divider_char)
+    offset += utf16_len("\n")
 
-    # Dm text link
-    offset_dm_link = offset_div1 + len(line3) + len(line4_prefix)
+    # 4. DM prefix
+    offset += utf16_len(dm_prefix)
+
+    # 5. DM Link
     entities.append(types.MessageEntity(
         type=enums.MessageEntityType.TEXT_LINK,
-        offset=offset_dm_link,
-        length=len(line4_link_text),
+        offset=offset,
+        length=utf16_len(dm_link_text),
         url=DM_LINK
     ))
+    offset += utf16_len(dm_link_text)
 
-    # Verified badge custom emoji
-    offset_badge = offset_dm_link + len(line4_link_text) + len(line4_middle)
+    # 6. Verified badge custom emoji
     entities.append(types.MessageEntity(
         type=enums.MessageEntityType.CUSTOM_EMOJI,
-        offset=offset_badge,
-        length=len(line4_badge),
+        offset=offset,
+        length=utf16_len(verified),
         custom_emoji_id=EMOJI_VERIFIED
     ))
+    offset += utf16_len(verified) + utf16_len(dm_suffix)
 
-    # Divider line 2
-    offset_div2 = len(line1) + len(line2) + len(line3) + len(line4_prefix) + len(line4_link_text) + len(line4_middle) + len(line4_badge) + len(line4_suffix)
-    for i in range(14):
+    # 7. Divider line 2 custom emojis (14 items)
+    for _ in range(14):
         entities.append(types.MessageEntity(
             type=enums.MessageEntityType.CUSTOM_EMOJI,
-            offset=offset_div2 + i * len(div_char),
-            length=len(div_char),
+            offset=offset,
+            length=utf16_len(divider_char),
             custom_emoji_id=EMOJI_DIVIDER
         ))
+        offset += utf16_len(divider_char)
+    offset += utf16_len("\n")
 
-    # Vault target custom emoji
-    offset_vault_target = offset_div2 + len(line5)
+    # 8. Vault icon custom emoji
     entities.append(types.MessageEntity(
         type=enums.MessageEntityType.CUSTOM_EMOJI,
-        offset=offset_vault_target,
-        length=len(vault_char),
+        offset=offset,
+        length=utf16_len(vault_icon),
         custom_emoji_id=EMOJI_VAULT
     ))
+    offset += utf16_len(vault_icon) + utf16_len(vault_prefix)
 
-    # Vault text link
-    offset_vault_link = offset_vault_target + len(line6_prefix)
+    # 9. Vault Link + Bold
     entities.append(types.MessageEntity(
         type=enums.MessageEntityType.TEXT_LINK,
-        offset=offset_vault_link,
-        length=len(line6_link_text),
+        offset=offset,
+        length=utf16_len(vault_link_text),
         url=VAULT_LINK
+    ))
+    entities.append(types.MessageEntity(
+        type=enums.MessageEntityType.BOLD,
+        offset=offset,
+        length=utf16_len(vault_link_text),
     ))
 
     return full_text, entities
@@ -232,12 +224,12 @@ async def handle_incoming_channel_post(client: Client, message: types.Message):
             if not raw_title:
                 raw_title = f"Course #{course_num}"
 
-            full_formatted, short_bold = format_title(raw_title)
+            # Clean raw title
+            clean_title = re.sub(r"^#\s*\d+\s*[-:.]*\s*", "", raw_title, flags=re.IGNORECASE).strip()
 
-            # Build exact text and custom emoji entities
-            caption_text, caption_entities = build_entities_and_text(
+            caption_text, caption_entities = build_caption_with_exact_entities(
                 header_line=f"#{course_num}",
-                title_line=f"{course_num}. {full_formatted}"
+                title_line=f"{course_num}. {clean_title}"
             )
 
             # Post to Storage Channel
@@ -270,7 +262,7 @@ async def handle_incoming_channel_post(client: Client, message: types.Message):
                     disable_web_page_preview=True
                 )
 
-            logger.info(f"✅ Posted Course #{course_num} Header to Storage Channel (msg_id={sent.id})")
+            logger.info(f"✅ Posted Course #{course_num} Header with 100% Animated Premium Emojis (msg_id={sent.id})")
 
             # Update Supabase Ingestion State
             if course_id:
@@ -294,19 +286,25 @@ async def handle_incoming_channel_post(client: Client, message: types.Message):
 
         course_rows = supabase_get("courses", {"id": f"eq.{active_course_id}", "select": "id,title,course_number"})
         course_title = course_rows[0].get("title") if course_rows else f"Course #{active_course_num}"
-        _, short_bold = format_title(course_title)
+        clean_course_title = re.sub(r"^#\s*\d+\s*[-:.]*\s*", "", course_title, flags=re.IGNORECASE).strip()
+        if " - " in clean_course_title:
+            short_name = clean_course_title.split(" - ", 1)[0].strip()
+        elif " – " in clean_course_title:
+            short_name = clean_course_title.split(" – ", 1)[0].strip()
+        else:
+            short_name = clean_course_title
 
         # Count existing logged lectures
         logged_items = supabase_get("course_video_log", {"course_id": f"eq.{active_course_id}", "select": "file_type"}) or []
         video_count = len([i for i in logged_items if i.get("file_type") in ("video", "audio")])
         material_count = len([i for i in logged_items if i.get("file_type") in ("pdf", "archive", "material")])
 
-        # A. Video Upload (Strip old caption, apply animated custom emojis + Mathematical Bold)
+        # A. Video Upload (Strip old caption, apply animated custom emojis)
         if message.video:
             next_idx = video_count + 1
-            cap_text, cap_entities = build_entities_and_text(
+            cap_text, cap_entities = build_caption_with_exact_entities(
                 header_line="",
-                title_line=f"{next_idx}. {short_bold} – Part {next_idx}"
+                title_line=f"{next_idx}. {short_name} – Part {next_idx}"
             )
             sent = await client.send_video(
                 chat_id=STORAGE_CHANNEL_ID,
@@ -315,16 +313,16 @@ async def handle_incoming_channel_post(client: Client, message: types.Message):
                 caption_entities=cap_entities,
                 supports_streaming=True
             )
-            logger.info(f"✅ Posted Video Part {next_idx} to Storage Channel (msg_id={sent.id})")
+            logger.info(f"✅ Posted Video Part {next_idx} with Animated Premium Emojis (msg_id={sent.id})")
             return
 
         # B. Audio Upload
         if message.audio or message.voice:
             next_idx = video_count + 1
             audio_id = message.audio.file_id if message.audio else message.voice.file_id
-            cap_text, cap_entities = build_entities_and_text(
+            cap_text, cap_entities = build_caption_with_exact_entities(
                 header_line="",
-                title_line=f"{next_idx}. {short_bold} – Audio {next_idx}"
+                title_line=f"{next_idx}. {short_name} – Audio {next_idx}"
             )
             sent = await client.send_audio(
                 chat_id=STORAGE_CHANNEL_ID,
@@ -332,7 +330,7 @@ async def handle_incoming_channel_post(client: Client, message: types.Message):
                 caption=cap_text,
                 caption_entities=cap_entities
             )
-            logger.info(f"✅ Posted Audio {next_idx} to Storage Channel (msg_id={sent.id})")
+            logger.info(f"✅ Posted Audio {next_idx} with Animated Premium Emojis (msg_id={sent.id})")
             return
 
         # C. Document / PDF Upload
@@ -341,11 +339,10 @@ async def handle_incoming_channel_post(client: Client, message: types.Message):
             is_pdf = file_name.endswith(".pdf") or "pdf" in (message.document.mime_type or "").lower()
             next_idx = material_count + 1
             doc_label = f"PDF {next_idx}" if is_pdf else f"Material {next_idx}"
-            emoji_char = "📄" if is_pdf else "📦"
 
-            cap_text, cap_entities = build_entities_and_text(
+            cap_text, cap_entities = build_caption_with_exact_entities(
                 header_line="",
-                title_line=f"{next_idx}. {short_bold} – {doc_label}"
+                title_line=f"{next_idx}. {short_name} – {doc_label}"
             )
             sent = await client.send_document(
                 chat_id=STORAGE_CHANNEL_ID,
@@ -353,7 +350,7 @@ async def handle_incoming_channel_post(client: Client, message: types.Message):
                 caption=cap_text,
                 caption_entities=cap_entities
             )
-            logger.info(f"✅ Posted {doc_label} to Storage Channel (msg_id={sent.id})")
+            logger.info(f"✅ Posted {doc_label} with Animated Premium Emojis (msg_id={sent.id})")
             return
 
         # D. Sticker Upload
