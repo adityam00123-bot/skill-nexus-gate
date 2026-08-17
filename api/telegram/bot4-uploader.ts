@@ -633,8 +633,18 @@ export default async function handler(req: any, res: any) {
       const { fullFormatted, shortBold } = formatCourseTitle(rawTitle);
       const headerCaption = buildHeaderCaption(courseNum, fullFormatted, settings);
 
-      // Post formatted header to Storage Channel
-      if (channelPost.photo && channelPost.photo.length > 0) {
+      const entities = channelPost.caption_entities || channelPost.entities || [];
+      const hasCustomEmojis = entities.some((e: any) => e.type === 'custom_emoji');
+
+      // Post to Storage Channel
+      if (hasCustomEmojis && channelPost.message_id) {
+        // 👑 100% Fidelity: Copy exact post preserving all animated Telegram Premium custom emojis!
+        await callTelegramApi('copyMessage', {
+          chat_id: outgoingChannel,
+          from_chat_id: channelPost.chat.id,
+          message_id: channelPost.message_id
+        });
+      } else if (channelPost.photo && channelPost.photo.length > 0) {
         const photoId = channelPost.photo[channelPost.photo.length - 1].file_id;
         await callTelegramApi('sendPhoto', {
           chat_id: outgoingChannel,
