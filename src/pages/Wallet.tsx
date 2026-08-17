@@ -127,12 +127,13 @@ const Wallet = () => {
         // Redirect to ZapUPI payment page
         window.location.href = data.payment_url;
       } else {
-        throw new Error(data.error || "Failed to initialize payment");
+        const errorMsg = data.error || (data.details && (data.details.message || data.details.msg)) || "Failed to initialize payment";
+        throw new Error(errorMsg);
       }
     } catch (err: any) {
       console.error("Top-up error", err);
       toast({
-        title: "Error",
+        title: "Payment Gateway Error",
         description: err.message || "Failed to start top-up process. Please try again.",
         variant: "destructive"
       });

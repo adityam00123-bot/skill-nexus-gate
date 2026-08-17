@@ -57,12 +57,17 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: 'Failed to create transaction' });
     }
 
+    // Clean and validate customer_mobile to ensure it is a valid 10-digit number
+    const rawMobile = (profile as any)?.phone || (profile as any)?.telegram_username || '';
+    const digitsOnly = String(rawMobile).replace(/\D/g, '');
+    const customerMobile = digitsOnly.length === 10 ? digitsOnly : '9876543210';
+
     // 4. Call ZapUPI create-order API
     const zapUpiPayload = {
       zap_key: ZAPUPI_API_KEY,
       order_id: zapUpiOrderId,
       amount: amount.toString(),
-      customer_mobile: (profile as any)?.telegram_username || "9999999999",
+      customer_mobile: customerMobile,
       remark: `WalletTopup|${userId}`,
       webhook_url: `https://courseverse-beta.vercel.app/api/zapupi-webhook`,
       success_url: `https://courseverse-beta.vercel.app/wallet?order_id=${zapUpiOrderId}`,
@@ -95,7 +100,8 @@ export default async function handler(req: any, res: any) {
 
     if (zapData.status !== 'success' && zapData.status !== 'Success') {
       console.error('ZapUPI error:', zapData);
-      return res.status(500).json({ error: 'Failed to initialize payment gateway', details: zapData });
+      const errMsg = zapData.message || zapData.msg || zapData.error || (typeof zapData.details === 'string' ? zapData.details : '') || 'Failed to initialize payment gateway';
+      return res.status(500).json({ error: errMsg, details: zapData });
     }
 
     return res.status(200).json({
