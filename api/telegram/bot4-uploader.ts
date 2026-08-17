@@ -25,6 +25,7 @@ const EMOJI_STAR = BigInt('6298821774423361023');
 const EMOJI_DIVIDER = BigInt('5323536337607861508');
 const EMOJI_VERIFIED = BigInt('6219532735359223977');
 const EMOJI_VAULT = BigInt('6296577138615125756');
+const EMOJI_CLOSING_CHECK = BigInt('6296577138615125756'); // Pink/Red Circular Verified Checkmark
 
 function utf16Len(s: string): number {
   let len = 0;
@@ -133,7 +134,15 @@ function buildCaptionWithEntities(headerLine: string, titleLine: string, dmLink:
   return { fullText, entities };
 }
 
-async function sendViaGramJS(targetChatId: number | string, sourceChatId: number | string, messageId: number, captionText: string, entities: any[]) {
+async function sendViaGramJS(
+  targetChatId: number | string,
+  sourceChatId: number | string,
+  messageId: number,
+  captionText: string,
+  entities: any[],
+  appendClosingSticker = false,
+  previousClosingStickerMsgId?: number | null
+) {
   const stringSession = new StringSession(SESSION_STRING);
   const client = new TelegramClient(stringSession, API_ID, API_HASH, {
     connectionRetries: 3,
@@ -145,37 +154,54 @@ async function sendViaGramJS(targetChatId: number | string, sourceChatId: number
   try {
     const messages = await client.getMessages(sourceChatId, { ids: [messageId] });
     const msg = messages[0];
+    let sentResult: any = null;
 
     if (msg && msg.media) {
-      const result = await client.sendFile(targetChatId, {
+      sentResult = await client.sendFile(targetChatId, {
         file: msg.media,
         caption: captionText,
         formattingEntities: entities
       });
-      return result;
     } else {
-      const result = await client.sendMessage(targetChatId, {
+      sentResult = await client.sendMessage(targetChatId, {
         message: captionText,
         formattingEntities: entities
       });
-      return result;
     }
+
+    let newClosingStickerMsgId: number | null = null;
+
+    if (appendClosingSticker) {
+      // 1. Delete previous closing sticker if present
+      if (previousClosingStickerMsgId) {
+        try {
+          await client.deleteMessages(targetChatId, [previousClosingStickerMsgId], { revoke: true });
+        } catch (e) {
+          console.warn('[bot4-uploader] Failed to delete previous closing sticker:', e);
+        }
+      }
+
+      // 2. Send animated closing sticker at the very bottom
+      const checkText = '✅';
+      const checkEntities = [
+        new Api.MessageEntityCustomEmoji({
+          offset: 0,
+          length: utf16Len(checkText),
+          documentId: EMOJI_CLOSING_CHECK
+        })
+      ];
+
+      const stickerMsg = await client.sendMessage(targetChatId, {
+        message: checkText,
+        formattingEntities: checkEntities
+      });
+
+      newClosingStickerMsgId = stickerMsg.id;
+    }
+
+    return { sentMessageId: sentResult?.id, newClosingStickerMsgId };
   } finally {
     await client.disconnect();
-  }
-}
-
-async function callTelegramApi(method: string, payload: any) {
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${BOT4_TELEGRAM_TOKEN}/${method}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    return await res.json();
-  } catch (err) {
-    console.error(`[bot4-uploader] ${method} error:`, err);
-    return { ok: false, error: err };
   }
 }
 
@@ -202,7 +228,7 @@ export default async function handler(req: any, res: any) {
     const outgoingChannel = DEFAULT_OUTGOING_CHANNEL;
 
     // ==========================================
-    // 1. INCOMING CHANNEL INGESTION & FORWARDING
+    // INCOMING CHANNEL INGESTION & FORWARDING
     // ==========================================
     const channelPost = update.channel_post || update.edited_channel_post;
     if (channelPost) {
@@ -249,13 +275,14 @@ export default async function handler(req: any, res: any) {
             DEFAULT_VAULT_LINK
           );
 
-          // Send via GramJS TypeScript with 100% Animated Telegram Premium Emojis
+          // Send Header (Do NOT append closing sticker yet; reset closing_sticker_msg_id)
           await sendViaGramJS(
             outgoingChannel,
             channelPost.chat.id,
             channelPost.message_id,
             fullText,
-            entities
+            entities,
+            false // No closing sticker on header
           );
 
           if (course) {
@@ -265,6 +292,7 @@ export default async function handler(req: any, res: any) {
                 id: 1,
                 current_course_id: course.id,
                 current_course_number: courseNum,
+                closing_sticker_msg_id: null,
                 updated_at: new Date().toISOString()
               }, { onConflict: 'id' });
           }
@@ -272,10 +300,10 @@ export default async function handler(req: any, res: any) {
           return res.status(200).json({ status: 'ok' });
         }
 
-        // B. Content Videos / PDFs / Audios
+        // B. Content Videos / PDFs / Audios / Standalone Checkmarks
         const { data: state } = await supabase
           .from('telegram_ingestion_state')
-          .select('current_course_id, current_course_number')
+          .select('current_course_id, current_course_number, closing_sticker_msg_id')
           .eq('id', 1)
           .maybeSingle();
 
@@ -308,13 +336,23 @@ export default async function handler(req: any, res: any) {
               DEFAULT_VAULT_LINK
             );
 
-            await sendViaGramJS(
+            const result = await sendViaGramJS(
               outgoingChannel,
               channelPost.chat.id,
               channelPost.message_id,
               fullText,
-              entities
+              entities,
+              true, // Auto-append closing sticker at bottom!
+              state.closing_sticker_msg_id
             );
+
+            if (result.newClosingStickerMsgId) {
+              await supabase
+                .from('telegram_ingestion_state')
+                .update({ closing_sticker_msg_id: result.newClosingStickerMsgId, updated_at: new Date().toISOString() })
+                .eq('id', 1);
+            }
+
             return res.status(200).json({ status: 'ok' });
           }
 
@@ -331,13 +369,23 @@ export default async function handler(req: any, res: any) {
               DEFAULT_VAULT_LINK
             );
 
-            await sendViaGramJS(
+            const result = await sendViaGramJS(
               outgoingChannel,
               channelPost.chat.id,
               channelPost.message_id,
               fullText,
-              entities
+              entities,
+              true, // Auto-append closing sticker at bottom!
+              state.closing_sticker_msg_id
             );
+
+            if (result.newClosingStickerMsgId) {
+              await supabase
+                .from('telegram_ingestion_state')
+                .update({ closing_sticker_msg_id: result.newClosingStickerMsgId, updated_at: new Date().toISOString() })
+                .eq('id', 1);
+            }
+
             return res.status(200).json({ status: 'ok' });
           }
         }
