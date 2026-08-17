@@ -17,15 +17,15 @@ function toMathBold(text: string): string {
   if (!text) return '';
   return text.split('').map(char => {
     const code = char.charCodeAt(0);
-    // A-Z
+    // A-Z: 0x41..0x5A -> 0x1D400..0x1D419
     if (code >= 65 && code <= 90) {
       return String.fromCodePoint(0x1D400 + (code - 65));
     }
-    // a-z
+    // a-z: 0x61..0x7A -> 0x1D41A..0x1D433
     if (code >= 97 && code <= 122) {
       return String.fromCodePoint(0x1D41A + (code - 97));
     }
-    // 0-9
+    // 0-9: 0x30..0x39 -> 0x1D7CE..0x1D7D7
     if (code >= 48 && code <= 57) {
       return String.fromCodePoint(0x1D7CE + (code - 48));
     }
@@ -245,6 +245,26 @@ export default async function handler(req: any, res: any) {
     }
 
     const settings = await getSettings();
+
+    // AUTO-CAPTURE CUSTOM EMOJIS FROM ANY INCOMING MESSAGE
+    const rawMsg = update.message || update.channel_post || update.edited_channel_post;
+    if (rawMsg) {
+      const entities = rawMsg.caption_entities || rawMsg.entities || [];
+      const customEmojiEntities = entities.filter((e: any) => e.type === 'custom_emoji' && e.custom_emoji_id);
+
+      if (customEmojiEntities.length > 0) {
+        const emojiUpdates: any = {};
+        if (customEmojiEntities[0]) emojiUpdates.custom_emoji_star = `<tg-emoji emoji-id="${customEmojiEntities[0].custom_emoji_id}">⭐️</tg-emoji>`;
+        if (customEmojiEntities[1]) emojiUpdates.custom_emoji_verified = `<tg-emoji emoji-id="${customEmojiEntities[1].custom_emoji_id}">✔️</tg-emoji>`;
+        if (customEmojiEntities[2]) emojiUpdates.custom_emoji_vault = `<tg-emoji emoji-id="${customEmojiEntities[2].custom_emoji_id}">🎯</tg-emoji>`;
+
+        if (Object.keys(emojiUpdates).length > 0) {
+          await updateSettings(emojiUpdates);
+          Object.assign(settings, emojiUpdates);
+        }
+      }
+    }
+
     const incomingChannel = String(settings.incoming_channel_id || DEFAULT_INCOMING_CHANNEL);
     const outgoingChannel = String(settings.outgoing_channel_id || DEFAULT_OUTGOING_CHANNEL);
 
@@ -755,7 +775,7 @@ export default async function handler(req: any, res: any) {
       const verified = settings.custom_emoji_verified || '✔️';
       const vault = settings.custom_emoji_vault || '🎯';
 
-      const textMsg = `🔗 ${nextIndex}. ${shortBold} – Access Link\n\n` +
+      const textMsg = `🔗 ${nextIndex}. ${shortBold} – Access Resource\n\n` +
         `${channelPost.text}\n\n` +
         `➗➗➗➗➗➗➗➗➗➗➗➗➗➗\n` +
         `Dm <a href="${dmLink}">●─<b>𝐂𝐨𝐮𝐫𝐬𝐞𝐕𝐞𝐫𝐬𝐞™</b> &lt;/&gt;</a> ${verified} For more\n` +
