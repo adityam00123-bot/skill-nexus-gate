@@ -120,7 +120,10 @@ export default async function handler(req: any, res: any) {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '📢 Add Bot to Channel / Group', url: `https://t.me/${BOT4_USERNAME}?startgroup=true` }]
+            [
+              { text: '📢 Add Bot to Channel', url: `https://t.me/${BOT4_USERNAME}?startchannel=true&admin=post_messages+edit_messages+delete_messages` },
+              { text: '👥 Add Bot to Group', url: `https://t.me/${BOT4_USERNAME}?startgroup=true` }
+            ]
           ]
         }
       });
